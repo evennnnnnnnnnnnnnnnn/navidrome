@@ -92,6 +92,7 @@ func (api *Router) routes() http.Handler {
 		api.addInsightsRoute(r)
 
 		r.With(adminOnlyMiddleware).Group(func(r chi.Router) {
+			api.addYoutubeImportRoute(r)
 			api.addInspectRoute(r)
 			api.addConfigRoute(r)
 			api.addUserLibraryRoute(r)

@@ -258,6 +258,54 @@ var _ = Describe("Lyrics", func() {
 		}))
 	})
 
+	Context("override source", func() {
+		var ds *tests.MockDataStore
+		var repo *tests.MockLyricsOverrideRepo
+		var overrideLyrics model.LyricList
+
+		BeforeEach(func() {
+			overrideLyrics = model.LyricList{
+				model.Lyrics{Lang: "eng", Line: []model.Line{{Value: "Admin-edited override line"}}},
+			}
+			repo = tests.CreateMockLyricsOverrideRepo()
+			Expect(repo.Put(mf.ID, overrideLyrics)).To(Succeed())
+			ds = &tests.MockDataStore{MockedLyricsOverride: repo}
+		})
+
+		It("wins over embedded lyrics when listed ahead of it in priority", func() {
+			conf.Server.LyricsPriority = "override,embedded"
+			svc := lyrics.NewLyrics(ds, nil)
+			list, err := svc.GetLyrics(ctx, &mf)
+			Expect(err).To(BeNil())
+			Expect(list).To(Equal(overrideLyrics))
+		})
+
+		It("wins over embedded lyrics using the default priority order (override is prepended)", func() {
+			conf.Server.LyricsPriority = "override,.ttml,.yaml,.yml,.elrc,.lrc,.srt,.txt,embedded"
+			svc := lyrics.NewLyrics(ds, nil)
+			list, err := svc.GetLyrics(ctx, &mf)
+			Expect(err).To(BeNil())
+			Expect(list).To(Equal(overrideLyrics))
+		})
+
+		It("is skipped when the configured priority omits it, falling back to embedded", func() {
+			conf.Server.LyricsPriority = "embedded"
+			svc := lyrics.NewLyrics(ds, nil)
+			list, err := svc.GetLyrics(ctx, &mf)
+			Expect(err).To(BeNil())
+			Expect(list).To(Equal(embeddedLyrics))
+		})
+
+		It("falls through to embedded when no override exists for the media file", func() {
+			conf.Server.LyricsPriority = "override,embedded"
+			emptyRepo := tests.CreateMockLyricsOverrideRepo()
+			svc := lyrics.NewLyrics(&tests.MockDataStore{MockedLyricsOverride: emptyRepo}, nil)
+			list, err := svc.GetLyrics(ctx, &mf)
+			Expect(err).To(BeNil())
+			Expect(list).To(Equal(embeddedLyrics))
+		})
+	})
+
 	Context("Errors", func() {
 		var RegularUserContext = XContext
 		var isRegularUser = os.Getuid() != 0

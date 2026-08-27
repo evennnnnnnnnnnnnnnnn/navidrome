@@ -65,6 +65,10 @@ func (s *SQLStore) Radio(ctx context.Context) model.RadioRepository {
 	return NewRadioRepository(ctx, s.getDBXBuilder())
 }
 
+func (s *SQLStore) LyricsOverride(ctx context.Context) model.LyricsOverrideRepository {
+	return NewLyricsOverrideRepository(ctx, s.getDBXBuilder())
+}
+
 func (s *SQLStore) UserProps(ctx context.Context) model.UserPropsRepository {
 	return NewUserPropsRepository(ctx, s.getDBXBuilder())
 }

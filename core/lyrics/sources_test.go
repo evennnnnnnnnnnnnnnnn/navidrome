@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -55,6 +56,49 @@ var _ = Describe("sources", func() {
 			lyrics, err := fromEmbedded(ctx, &mf)
 
 			Expect(lyrics).To(HaveLen(0))
+			Expect(err).ToNot(BeNil())
+		})
+	})
+
+	Describe("fromOverride", func() {
+		It("should return nothing when the service has no DataStore", func() {
+			svc := &lyricsService{}
+			lyrics, err := svc.fromOverride(ctx, &model.MediaFile{ID: "1"})
+
+			Expect(err).To(BeNil())
+			Expect(lyrics).To(BeNil())
+		})
+
+		It("should return nothing when no override exists for the media file", func() {
+			ds := &tests.MockDataStore{MockedLyricsOverride: tests.CreateMockLyricsOverrideRepo()}
+			svc := &lyricsService{ds: ds}
+			lyrics, err := svc.fromOverride(ctx, &model.MediaFile{ID: "1"})
+
+			Expect(err).To(BeNil())
+			Expect(lyrics).To(BeNil())
+		})
+
+		It("should return the stored override, decoded from its LyricList JSON shape", func() {
+			overrideLyrics := model.LyricList{
+				model.Lyrics{Lang: "eng", Line: []model.Line{{Value: "Admin-edited line"}}},
+			}
+			repo := tests.CreateMockLyricsOverrideRepo()
+			Expect(repo.Put("1", overrideLyrics)).To(Succeed())
+			ds := &tests.MockDataStore{MockedLyricsOverride: repo}
+			svc := &lyricsService{ds: ds}
+
+			lyrics, err := svc.fromOverride(ctx, &model.MediaFile{ID: "1"})
+			Expect(err).To(BeNil())
+			Expect(lyrics).To(Equal(overrideLyrics))
+		})
+
+		It("should propagate repository errors", func() {
+			repo := tests.CreateMockLyricsOverrideRepo()
+			repo.Err = true
+			ds := &tests.MockDataStore{MockedLyricsOverride: repo}
+			svc := &lyricsService{ds: ds}
+
+			_, err := svc.fromOverride(ctx, &model.MediaFile{ID: "1"})
 			Expect(err).ToNot(BeNil())
 		})
 	})

@@ -68,6 +68,25 @@ func fromExternalFile(ctx context.Context, mf *model.MediaFile, suffix string) (
 	return list, nil
 }
 
+// fromOverride reads the admin-edited shared lyrics override for the media file, if
+// any. It is the top-priority source: when present, it wins over sidecar/embedded
+// lyrics for every user and every Subsonic client.
+func (l *lyricsService) fromOverride(ctx context.Context, mf *model.MediaFile) (model.LyricList, error) {
+	if l.ds == nil {
+		return nil, nil
+	}
+
+	override, err := l.ds.LyricsOverride(ctx).Get(mf.ID)
+	if errors.Is(err, model.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return override.StructuredLyrics()
+}
+
 // fromPlugin attempts to load lyrics from a plugin with the given name.
 func (l *lyricsService) fromPlugin(ctx context.Context, mf *model.MediaFile, pluginName string) (model.LyricList, error) {
 	if l.pluginLoader == nil {

@@ -115,6 +115,8 @@ func (l *lyricsService) getLyricsForCandidates(ctx context.Context, mediaFiles [
 
 func (l *lyricsService) getLyricsFromSource(ctx context.Context, mf *model.MediaFile, pattern string) (model.LyricList, error) {
 	switch {
+	case strings.EqualFold(pattern, "override"):
+		return l.fromOverride(ctx, mf)
 	case strings.EqualFold(pattern, "embedded"):
 		return fromEmbedded(ctx, mf)
 	case strings.HasPrefix(pattern, "."):

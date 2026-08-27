@@ -27,6 +27,7 @@ type MockDataStore struct {
 	MockedScrobbleBuffer model.ScrobbleBufferRepository
 	MockedScrobble       model.ScrobbleRepository
 	MockedRadio          model.RadioRepository
+	MockedLyricsOverride model.LyricsOverrideRepository
 	MockedPlugin         model.PluginRepository
 	MockedArtwork        model.ArtworkRepository
 	MockedArtworkQueue   model.ArtworkQueueRepository
@@ -270,6 +271,19 @@ func (db *MockDataStore) Radio(ctx context.Context) model.RadioRepository {
 	}
 	db.MockedRadio = CreateMockedRadioRepo()
 	return db.MockedRadio
+}
+
+func (db *MockDataStore) LyricsOverride(ctx context.Context) model.LyricsOverrideRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedLyricsOverride != nil {
+		return db.MockedLyricsOverride
+	}
+	if db.RealDS != nil {
+		return db.RealDS.LyricsOverride(ctx)
+	}
+	db.MockedLyricsOverride = CreateMockLyricsOverrideRepo()
+	return db.MockedLyricsOverride
 }
 
 func (db *MockDataStore) Plugin(ctx context.Context) model.PluginRepository {

@@ -69,6 +69,10 @@ func (s *SQLStore) LyricsOverride(ctx context.Context) model.LyricsOverrideRepos
 	return NewLyricsOverrideRepository(ctx, s.getDBXBuilder())
 }
 
+func (s *SQLStore) FuriganaBinding(ctx context.Context) model.FuriganaBindingRepository {
+	return NewFuriganaBindingRepository(ctx, s.getDBXBuilder())
+}
+
 func (s *SQLStore) UserProps(ctx context.Context) model.UserPropsRepository {
 	return NewUserPropsRepository(ctx, s.getDBXBuilder())
 }
@@ -129,6 +133,8 @@ func (s *SQLStore) Resource(ctx context.Context, m any) model.ResourceRepository
 		return s.Playlist(ctx).(model.ResourceRepository)
 	case model.Radio:
 		return s.Radio(ctx).(model.ResourceRepository)
+	case model.FuriganaBinding:
+		return s.FuriganaBinding(ctx).(model.ResourceRepository)
 	case model.Share:
 		return s.Share(ctx).(model.ResourceRepository)
 	case model.Tag:

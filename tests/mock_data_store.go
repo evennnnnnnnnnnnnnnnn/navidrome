@@ -8,31 +8,32 @@ import (
 )
 
 type MockDataStore struct {
-	RealDS               model.DataStore
-	MockedLibrary        model.LibraryRepository
-	MockedFolder         model.FolderRepository
-	MockedGenre          model.GenreRepository
-	MockedAlbum          model.AlbumRepository
-	MockedArtist         model.ArtistRepository
-	MockedMediaFile      model.MediaFileRepository
-	MockedTag            model.TagRepository
-	MockedUser           model.UserRepository
-	MockedProperty       model.PropertyRepository
-	MockedPlayer         model.PlayerRepository
-	MockedPlaylist       model.PlaylistRepository
-	MockedPlayQueue      model.PlayQueueRepository
-	MockedShare          model.ShareRepository
-	MockedTranscoding    model.TranscodingRepository
-	MockedUserProps      model.UserPropsRepository
-	MockedScrobbleBuffer model.ScrobbleBufferRepository
-	MockedScrobble       model.ScrobbleRepository
-	MockedRadio          model.RadioRepository
-	MockedLyricsOverride model.LyricsOverrideRepository
-	MockedPlugin         model.PluginRepository
-	MockedArtwork        model.ArtworkRepository
-	MockedArtworkQueue   model.ArtworkQueueRepository
-	scrobbleBufferMu     sync.Mutex
-	repoMu               sync.Mutex
+	RealDS                model.DataStore
+	MockedLibrary         model.LibraryRepository
+	MockedFolder          model.FolderRepository
+	MockedGenre           model.GenreRepository
+	MockedAlbum           model.AlbumRepository
+	MockedArtist          model.ArtistRepository
+	MockedMediaFile       model.MediaFileRepository
+	MockedTag             model.TagRepository
+	MockedUser            model.UserRepository
+	MockedProperty        model.PropertyRepository
+	MockedPlayer          model.PlayerRepository
+	MockedPlaylist        model.PlaylistRepository
+	MockedPlayQueue       model.PlayQueueRepository
+	MockedShare           model.ShareRepository
+	MockedTranscoding     model.TranscodingRepository
+	MockedUserProps       model.UserPropsRepository
+	MockedScrobbleBuffer  model.ScrobbleBufferRepository
+	MockedScrobble        model.ScrobbleRepository
+	MockedRadio           model.RadioRepository
+	MockedLyricsOverride  model.LyricsOverrideRepository
+	MockedFuriganaBinding model.FuriganaBindingRepository
+	MockedPlugin          model.PluginRepository
+	MockedArtwork         model.ArtworkRepository
+	MockedArtworkQueue    model.ArtworkQueueRepository
+	scrobbleBufferMu      sync.Mutex
+	repoMu                sync.Mutex
 
 	// GC tracking
 	GCCalled bool
@@ -286,6 +287,19 @@ func (db *MockDataStore) LyricsOverride(ctx context.Context) model.LyricsOverrid
 	return db.MockedLyricsOverride
 }
 
+func (db *MockDataStore) FuriganaBinding(ctx context.Context) model.FuriganaBindingRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedFuriganaBinding != nil {
+		return db.MockedFuriganaBinding
+	}
+	if db.RealDS != nil {
+		return db.RealDS.FuriganaBinding(ctx)
+	}
+	db.MockedFuriganaBinding = CreateMockFuriganaBindingRepo()
+	return db.MockedFuriganaBinding
+}
+
 func (db *MockDataStore) Plugin(ctx context.Context) model.PluginRepository {
 	db.repoMu.Lock()
 	defer db.repoMu.Unlock()
@@ -357,6 +371,8 @@ func (db *MockDataStore) Resource(ctx context.Context, m any) model.ResourceRepo
 		return db.Playlist(ctx).(model.ResourceRepository)
 	case model.Radio, *model.Radio:
 		return db.Radio(ctx).(model.ResourceRepository)
+	case model.FuriganaBinding, *model.FuriganaBinding:
+		return db.FuriganaBinding(ctx).(model.ResourceRepository)
 	case model.Share, *model.Share:
 		return db.Share(ctx).(model.ResourceRepository)
 	case model.Genre, *model.Genre:

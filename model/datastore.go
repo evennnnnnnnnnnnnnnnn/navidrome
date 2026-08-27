@@ -34,6 +34,7 @@ type DataStore interface {
 	Player(ctx context.Context) PlayerRepository
 	Radio(ctx context.Context) RadioRepository
 	LyricsOverride(ctx context.Context) LyricsOverrideRepository
+	FuriganaBinding(ctx context.Context) FuriganaBindingRepository
 	Share(ctx context.Context) ShareRepository
 	Property(ctx context.Context) PropertyRepository
 	User(ctx context.Context) UserRepository

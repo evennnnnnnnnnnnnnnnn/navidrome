@@ -76,6 +76,7 @@ func (api *Router) routes() http.Handler {
 		api.R(r, "/transcoding", model.Transcoding{}, conf.Server.EnableTranscodingConfig)
 		api.addRadioRoute(r)
 		api.addLyricsOverrideRoute(r)
+		api.R(r, "/furiganabinding", model.FuriganaBinding{}, true)
 		api.R(r, "/tag", model.Tag{}, false)
 		api.R(r, "/scrobble", model.Scrobble{}, false)
 		if conf.Server.EnableSharing {

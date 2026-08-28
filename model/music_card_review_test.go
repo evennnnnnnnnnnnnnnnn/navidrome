@@ -178,5 +178,18 @@ var _ = Describe("MusicCardReview", func() {
 				Expect(r.IntervalDays).To(BeNumerically("~", 20.67, 1e-9))
 			})
 		})
+
+		Describe("interval cap", func() {
+			It("caps geometric growth so due_at never overflows into the past", func() {
+				r := newReview()
+				for i := 0; i < 50; i++ {
+					Expect(r.ApplyGrade(model.ReviewGradeEasy, now)).To(Succeed())
+					Expect(r.IntervalDays).To(BeNumerically("<=", 36500))
+					Expect(r.DueAt.After(now)).To(BeTrue(),
+						"due_at must stay in the future after %d easy grades", i+1)
+				}
+				Expect(r.IntervalDays).To(Equal(36500.0))
+			})
+		})
 	})
 })

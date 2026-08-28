@@ -419,6 +419,8 @@ func (db *MockDataStore) Resource(ctx context.Context, m any) model.ResourceRepo
 		return db.MusicCard(ctx).(model.ResourceRepository)
 	case model.MusicCardSnippet, *model.MusicCardSnippet:
 		return db.MusicCardSnippet(ctx).(model.ResourceRepository)
+	case model.MusicCardReview, *model.MusicCardReview:
+		return db.MusicCardReview(ctx).(model.ResourceRepository)
 	case model.Share, *model.Share:
 		return db.Share(ctx).(model.ResourceRepository)
 	case model.Genre, *model.Genre:

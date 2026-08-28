@@ -44,39 +44,40 @@ func postMusicCardReviewGrade(ds model.DataStore) http.HandlerFunc {
 			return
 		}
 
-		// The repository scopes reads to the caller's cards, so a card owned by someone else is
-		// indistinguishable from a missing one (404, no information leak).
-		repo := ds.MusicCardReview(ctx)
+		// The read-transition-write sequence runs inside an immediate transaction so concurrent
+		// grades for the same card serialize instead of overwriting each other's state (and two
+		// racing first grades cannot both try to create the unique card_id row). The repository
+		// scopes reads to the caller's cards, so a card owned by someone else is indistinguishable
+		// from a missing one (404, no information leak).
 		now := time.Now()
-		rev, err := repo.GetByCardID(payload.CardID)
-		if errors.Is(err, model.ErrNotFound) {
-			if _, err := ds.MusicCard(ctx).Get(payload.CardID); errors.Is(err, model.ErrNotFound) {
-				http.Error(w, "music card not found", http.StatusNotFound)
-				return
+		var rev *model.MusicCardReview
+		txErr := ds.WithTxImmediate(func(tx model.DataStore) error {
+			repo := tx.MusicCardReview(ctx)
+			var err error
+			rev, err = repo.GetByCardID(payload.CardID)
+			if errors.Is(err, model.ErrNotFound) {
+				if _, err := tx.MusicCard(ctx).Get(payload.CardID); err != nil {
+					return err
+				}
+				rev = model.NewMusicCardReview(payload.CardID, now)
 			} else if err != nil {
-				log.Error(ctx, "Error retrieving music card for review grade", "cardId", payload.CardID, err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
+				return err
 			}
-			rev = model.NewMusicCardReview(payload.CardID, now)
-		} else if err != nil {
-			log.Error(ctx, "Error retrieving music card review state", "cardId", payload.CardID, err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if err := rev.ApplyGrade(grade, now); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if err := repo.Put(rev); err != nil {
-			if errors.Is(err, rest.ErrPermissionDenied) {
+			if err := rev.ApplyGrade(grade, now); err != nil {
+				return err
+			}
+			return repo.Put(rev)
+		})
+		if txErr != nil {
+			switch {
+			case errors.Is(txErr, model.ErrNotFound), errors.Is(txErr, rest.ErrPermissionDenied):
 				http.Error(w, "music card not found", http.StatusNotFound)
-				return
+			case errors.Is(txErr, model.ErrValidation):
+				http.Error(w, txErr.Error(), http.StatusBadRequest)
+			default:
+				log.Error(ctx, "Error grading music card review", "cardId", payload.CardID, txErr)
+				http.Error(w, txErr.Error(), http.StatusInternalServerError)
 			}
-			log.Error(ctx, "Error saving music card review state", "cardId", payload.CardID, err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 

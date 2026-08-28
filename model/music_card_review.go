@@ -39,6 +39,10 @@ const (
 	reviewAgainDelay         = 10 * time.Minute
 	reviewHardIntervalFactor = 1.2
 	reviewEasyIntervalBonus  = 1.3
+	// reviewMaxIntervalDays caps geometric interval growth (100 years). Uncapped, repeated
+	// easy/good grades overflow the float-days -> time.Duration conversion (~106751 days) and
+	// wrap due_at into the past.
+	reviewMaxIntervalDays = 36500
 )
 
 // MusicCardReview is the per-card SRS scheduling state. One row per card (unique card_id); it has
@@ -94,7 +98,7 @@ func (r *MusicCardReview) ApplyGrade(grade ReviewGrade, now time.Time) error {
 		if r.RepetitionCount == 1 {
 			r.IntervalDays = 1
 		} else {
-			r.IntervalDays = math.Max(1, r.IntervalDays*reviewHardIntervalFactor)
+			r.IntervalDays = clampInterval(r.IntervalDays * reviewHardIntervalFactor)
 		}
 		r.DueAt = now.Add(daysToDuration(r.IntervalDays))
 	case ReviewGradeGood:
@@ -105,7 +109,7 @@ func (r *MusicCardReview) ApplyGrade(grade ReviewGrade, now time.Time) error {
 		case 2:
 			r.IntervalDays = 6
 		default:
-			r.IntervalDays = math.Max(1, r.IntervalDays*r.EaseFactor)
+			r.IntervalDays = clampInterval(r.IntervalDays * r.EaseFactor)
 		}
 		r.DueAt = now.Add(daysToDuration(r.IntervalDays))
 	case ReviewGradeEasy:
@@ -117,7 +121,7 @@ func (r *MusicCardReview) ApplyGrade(grade ReviewGrade, now time.Time) error {
 		case 2:
 			r.IntervalDays = 6 * reviewEasyIntervalBonus
 		default:
-			r.IntervalDays = math.Max(1, r.IntervalDays*r.EaseFactor*reviewEasyIntervalBonus)
+			r.IntervalDays = clampInterval(r.IntervalDays * r.EaseFactor * reviewEasyIntervalBonus)
 		}
 		r.DueAt = now.Add(daysToDuration(r.IntervalDays))
 	default:
@@ -125,6 +129,10 @@ func (r *MusicCardReview) ApplyGrade(grade ReviewGrade, now time.Time) error {
 	}
 	r.LastReviewedAt = now
 	return nil
+}
+
+func clampInterval(days float64) float64 {
+	return math.Min(math.Max(1, days), reviewMaxIntervalDays)
 }
 
 func daysToDuration(days float64) time.Duration {

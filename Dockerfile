@@ -154,20 +154,29 @@ COPY --from=build /out /
 
 ########################################################################################################################
 ### Build Final Image
-FROM alpine:3.20 AS final
+# alpine 3.21, NOT 3.20, and the reason is yt-dlp: 3.20 ships nodejs 20 and
+# nodejs-current 21, and yt-dlp rejects both as "(unsupported)" JS runtimes.
+# 3.21 ships nodejs 22, which yt-dlp accepts. See the JS runtime note below.
+FROM alpine:3.21 AS final
 LABEL maintainer="deluan@navidrome.org"
 LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
 
 # Install runtime dependencies
 # - libwebp + symlinks: enables native WebP encoding via purego/dlopen
-# - nodejs: yt-dlp needs a JavaScript runtime to solve YouTube's player challenges
-#   (core/ytimport/ytimport.go accepts deno or node; node is the smaller of the two here)
-# - yt-dlp from PyPI, NOT from apk: alpine 3.20 pins yt-dlp 2024.12.03, which is far
+# - yt-dlp from PyPI, NOT from apk: alpine pins yt-dlp 2024.12.03, which is far
 #   too old to extract from YouTube today. YouTube breaks extractors every few weeks,
 #   so the version must be current at build time — which also makes the weekly
 #   scheduled image rebuild meaningful instead of rebuilding the same dead version.
+# - nodejs + yt-dlp-ejs: YouTube extraction needs a JavaScript runtime to solve the
+#   player challenge (core/ytimport/ytimport.go passes --js-runtimes deno/node).
+#   BOTH parts are required and each fails silently on its own: without a supported
+#   node, yt-dlp logs "No supported JavaScript runtime could be found" and warns that
+#   extraction is deprecated and "some formats may be missing"; without yt-dlp-ejs it
+#   has to fetch the challenge solver remotely at run time. Verify with
+#   `yt-dlp -v ...` — the debug line must read "JS runtimes: node-22.x" with no
+#   "(unsupported)" suffix.
 RUN apk add -U --no-cache ffmpeg mpv sqlite libwebp libwebpdemux libwebpmux python3 py3-pip nodejs && \
-    pip install --no-cache-dir --break-system-packages yt-dlp && \
+    pip install --no-cache-dir --break-system-packages yt-dlp yt-dlp-ejs && \
     for lib in libwebp libwebpdemux libwebpmux; do \
         target=$(ls /usr/lib/$lib.so.* 2>/dev/null | head -1) && \
         [ -n "$target" ] && ln -sf "$target" /usr/lib/$lib.so; \

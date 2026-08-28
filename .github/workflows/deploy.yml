@@ -95,3 +95,27 @@ jobs:
                   echo "--- node ---";    docker run --rm --entrypoint node    "$IMAGE" --version
                   echo "--- ffmpeg ---";  docker run --rm --entrypoint ffmpeg  "$IMAGE" -version | head -1
                   echo "--- navidrome ---"; docker run --rm "$IMAGE" --version
+
+            # A yt-dlp that cannot use a JS runtime still "works" - it downloads, warns,
+            # and quietly loses formats until YouTube drops the un-challenged path
+            # entirely. That failure is invisible in a --version check, so assert the
+            # runtime is actually accepted. Alpine 20/21-era node is rejected as
+            # "(unsupported)"; this step is what catches a base-image regression.
+            - name: Verify yt-dlp accepts the bundled JS runtime
+              run: |
+                  IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.version.outputs.git_sha }}"
+                  OUT=$(docker run --rm --entrypoint yt-dlp "$IMAGE" \
+                          -v --js-runtimes deno --js-runtimes node --simulate --quiet \
+                          --print "%(title)s" -- "https://www.youtube.com/watch?v=dQw4w9WgXcQ" 2>&1 || true)
+                  echo "$OUT" | grep -E "JS runtimes|Challenge Providers" || true
+                  if echo "$OUT" | grep -q "No supported JavaScript runtime"; then
+                    echo "::error::yt-dlp found no usable JS runtime. YouTube import will degrade."
+                    echo "$OUT" | tail -30
+                    exit 1
+                  fi
+                  if echo "$OUT" | grep -qE "JS runtimes:.*\(unsupported\)"; then
+                    echo "::error::The bundled node version is rejected by yt-dlp as unsupported."
+                    echo "$OUT" | grep "JS runtimes:"
+                    exit 1
+                  fi
+                  echo "OK: yt-dlp accepted the bundled JS runtime."

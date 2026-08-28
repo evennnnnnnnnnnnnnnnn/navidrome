@@ -22,6 +22,9 @@ type MockFFmpeg struct {
 	Error            error
 	ProbeAudioResult *ffmpeg.AudioProbeResult
 	ProbeAvailable   bool
+	// LastTranscodeOptions captures the opts passed to the most recent Transcode call, for tests
+	// that need to assert on them (e.g. clip padding/clamping) without running real ffmpeg.
+	LastTranscodeOptions ffmpeg.TranscodeOptions
 }
 
 func (ff *MockFFmpeg) IsAvailable() bool {
@@ -32,7 +35,8 @@ func (ff *MockFFmpeg) IsProbeAvailable() bool {
 	return ff.ProbeAvailable
 }
 
-func (ff *MockFFmpeg) Transcode(_ context.Context, _ ffmpeg.TranscodeOptions) (io.ReadCloser, error) {
+func (ff *MockFFmpeg) Transcode(_ context.Context, opts ffmpeg.TranscodeOptions) (io.ReadCloser, error) {
+	ff.LastTranscodeOptions = opts
 	if ff.Error != nil {
 		return nil, ff.Error
 	}

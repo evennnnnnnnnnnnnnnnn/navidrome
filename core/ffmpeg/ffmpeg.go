@@ -32,6 +32,13 @@ type TranscodeOptions struct {
 	Channels   int // 0 = no constraint
 	BitDepth   int // 0 = no constraint; valid values: 16, 24, 32
 	Offset     int // seconds
+	// StartOffsetMs, when > 0, seeks with millisecond precision instead of Offset's whole
+	// seconds. Used by short clip extraction (e.g. Music Cards) where a padded snippet window
+	// must not drift by up to a second.
+	StartOffsetMs int // milliseconds; takes precedence over Offset when set
+	// DurationMs, when > 0, bounds the transcoded output to that many milliseconds from the seek
+	// point instead of running to the end of the source.
+	DurationMs int // milliseconds, 0 = no limit
 }
 
 // AudioProbeResult contains authoritative audio stream properties from ffprobe.
@@ -81,7 +88,10 @@ func (e *ffmpeg) Transcode(ctx context.Context, opts TranscodeOptions) (io.ReadC
 		return nil, err
 	}
 	var args []string
-	if isDefaultCommand(opts.Format, opts.Command) {
+	// A bounded clip request (StartOffsetMs/DurationMs) always goes through the programmatic
+	// builder: it needs ms-precision -ss/-t placement that a user's custom command template has
+	// no slot for, and clip extraction has no reason to honor per-user transcoding customization.
+	if isDefaultCommand(opts.Format, opts.Command) || opts.StartOffsetMs > 0 || opts.DurationMs > 0 {
 		args = buildDynamicArgs(opts)
 	} else {
 		args = buildTemplateArgs(opts)
@@ -461,11 +471,18 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 	cmdPath, _ := ffmpegCmd()
 	args := []string{cmdPath}
 
-	if opts.Offset > 0 {
+	if opts.StartOffsetMs > 0 {
+		args = append(args, "-ss", formatMsAsSeconds(opts.StartOffsetMs))
+	} else if opts.Offset > 0 {
 		args = append(args, "-ss", strconv.Itoa(opts.Offset))
 	}
 
 	args = append(args, "-i", opts.FilePath)
+
+	if opts.DurationMs > 0 {
+		args = append(args, "-t", formatMsAsSeconds(opts.DurationMs))
+	}
+
 	args = append(args, "-map", "0:a:0")
 
 	// Preserve source tags. -map_metadata 0 copies format-level tags (MP3/FLAC);
@@ -493,6 +510,12 @@ func buildDynamicArgs(opts TranscodeOptions) []string {
 
 	args = append(args, "-")
 	return args
+}
+
+// formatMsAsSeconds renders a millisecond duration as the fractional-seconds string ffmpeg's
+// -ss/-t flags expect (e.g. 1500 -> "1.500").
+func formatMsAsSeconds(ms int) string {
+	return strconv.FormatFloat(float64(ms)/1000, 'f', 3, 64)
 }
 
 // buildTemplateArgs handles user-customized command templates, with dynamic injection

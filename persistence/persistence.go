@@ -73,6 +73,14 @@ func (s *SQLStore) FuriganaBinding(ctx context.Context) model.FuriganaBindingRep
 	return NewFuriganaBindingRepository(ctx, s.getDBXBuilder())
 }
 
+func (s *SQLStore) MusicCard(ctx context.Context) model.MusicCardRepository {
+	return NewMusicCardRepository(ctx, s.getDBXBuilder())
+}
+
+func (s *SQLStore) MusicCardSnippet(ctx context.Context) model.MusicCardSnippetRepository {
+	return NewMusicCardSnippetRepository(ctx, s.getDBXBuilder())
+}
+
 func (s *SQLStore) UserProps(ctx context.Context) model.UserPropsRepository {
 	return NewUserPropsRepository(ctx, s.getDBXBuilder())
 }
@@ -135,6 +143,10 @@ func (s *SQLStore) Resource(ctx context.Context, m any) model.ResourceRepository
 		return s.Radio(ctx).(model.ResourceRepository)
 	case model.FuriganaBinding:
 		return s.FuriganaBinding(ctx).(model.ResourceRepository)
+	case model.MusicCard:
+		return s.MusicCard(ctx).(model.ResourceRepository)
+	case model.MusicCardSnippet:
+		return s.MusicCardSnippet(ctx).(model.ResourceRepository)
 	case model.Share:
 		return s.Share(ctx).(model.ResourceRepository)
 	case model.Tag:

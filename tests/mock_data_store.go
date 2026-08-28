@@ -8,32 +8,34 @@ import (
 )
 
 type MockDataStore struct {
-	RealDS                model.DataStore
-	MockedLibrary         model.LibraryRepository
-	MockedFolder          model.FolderRepository
-	MockedGenre           model.GenreRepository
-	MockedAlbum           model.AlbumRepository
-	MockedArtist          model.ArtistRepository
-	MockedMediaFile       model.MediaFileRepository
-	MockedTag             model.TagRepository
-	MockedUser            model.UserRepository
-	MockedProperty        model.PropertyRepository
-	MockedPlayer          model.PlayerRepository
-	MockedPlaylist        model.PlaylistRepository
-	MockedPlayQueue       model.PlayQueueRepository
-	MockedShare           model.ShareRepository
-	MockedTranscoding     model.TranscodingRepository
-	MockedUserProps       model.UserPropsRepository
-	MockedScrobbleBuffer  model.ScrobbleBufferRepository
-	MockedScrobble        model.ScrobbleRepository
-	MockedRadio           model.RadioRepository
-	MockedLyricsOverride  model.LyricsOverrideRepository
-	MockedFuriganaBinding model.FuriganaBindingRepository
-	MockedPlugin          model.PluginRepository
-	MockedArtwork         model.ArtworkRepository
-	MockedArtworkQueue    model.ArtworkQueueRepository
-	scrobbleBufferMu      sync.Mutex
-	repoMu                sync.Mutex
+	RealDS                 model.DataStore
+	MockedLibrary          model.LibraryRepository
+	MockedFolder           model.FolderRepository
+	MockedGenre            model.GenreRepository
+	MockedAlbum            model.AlbumRepository
+	MockedArtist           model.ArtistRepository
+	MockedMediaFile        model.MediaFileRepository
+	MockedTag              model.TagRepository
+	MockedUser             model.UserRepository
+	MockedProperty         model.PropertyRepository
+	MockedPlayer           model.PlayerRepository
+	MockedPlaylist         model.PlaylistRepository
+	MockedPlayQueue        model.PlayQueueRepository
+	MockedShare            model.ShareRepository
+	MockedTranscoding      model.TranscodingRepository
+	MockedUserProps        model.UserPropsRepository
+	MockedScrobbleBuffer   model.ScrobbleBufferRepository
+	MockedScrobble         model.ScrobbleRepository
+	MockedRadio            model.RadioRepository
+	MockedLyricsOverride   model.LyricsOverrideRepository
+	MockedFuriganaBinding  model.FuriganaBindingRepository
+	MockedMusicCard        model.MusicCardRepository
+	MockedMusicCardSnippet model.MusicCardSnippetRepository
+	MockedPlugin           model.PluginRepository
+	MockedArtwork          model.ArtworkRepository
+	MockedArtworkQueue     model.ArtworkQueueRepository
+	scrobbleBufferMu       sync.Mutex
+	repoMu                 sync.Mutex
 
 	// GC tracking
 	GCCalled bool
@@ -300,6 +302,32 @@ func (db *MockDataStore) FuriganaBinding(ctx context.Context) model.FuriganaBind
 	return db.MockedFuriganaBinding
 }
 
+func (db *MockDataStore) MusicCard(ctx context.Context) model.MusicCardRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedMusicCard != nil {
+		return db.MockedMusicCard
+	}
+	if db.RealDS != nil {
+		return db.RealDS.MusicCard(ctx)
+	}
+	db.MockedMusicCard = CreateMockMusicCardRepo()
+	return db.MockedMusicCard
+}
+
+func (db *MockDataStore) MusicCardSnippet(ctx context.Context) model.MusicCardSnippetRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedMusicCardSnippet != nil {
+		return db.MockedMusicCardSnippet
+	}
+	if db.RealDS != nil {
+		return db.RealDS.MusicCardSnippet(ctx)
+	}
+	db.MockedMusicCardSnippet = CreateMockMusicCardSnippetRepo()
+	return db.MockedMusicCardSnippet
+}
+
 func (db *MockDataStore) Plugin(ctx context.Context) model.PluginRepository {
 	db.repoMu.Lock()
 	defer db.repoMu.Unlock()
@@ -373,6 +401,10 @@ func (db *MockDataStore) Resource(ctx context.Context, m any) model.ResourceRepo
 		return db.Radio(ctx).(model.ResourceRepository)
 	case model.FuriganaBinding, *model.FuriganaBinding:
 		return db.FuriganaBinding(ctx).(model.ResourceRepository)
+	case model.MusicCard, *model.MusicCard:
+		return db.MusicCard(ctx).(model.ResourceRepository)
+	case model.MusicCardSnippet, *model.MusicCardSnippet:
+		return db.MusicCardSnippet(ctx).(model.ResourceRepository)
 	case model.Share, *model.Share:
 		return db.Share(ctx).(model.ResourceRepository)
 	case model.Genre, *model.Genre:

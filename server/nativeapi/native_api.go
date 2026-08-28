@@ -15,6 +15,7 @@ import (
 	"github.com/navidrome/navidrome/core"
 	"github.com/navidrome/navidrome/core/artwork"
 	"github.com/navidrome/navidrome/core/external"
+	"github.com/navidrome/navidrome/core/ffmpeg"
 	"github.com/navidrome/navidrome/core/metrics"
 	playlistsvc "github.com/navidrome/navidrome/core/playlists"
 	"github.com/navidrome/navidrome/log"
@@ -48,10 +49,11 @@ type Router struct {
 	pluginManager PluginManager
 	imgUpload     artwork.Uploader
 	provider      external.Provider
+	ff            ffmpeg.FFmpeg
 }
 
-func New(ds model.DataStore, share core.Share, playlists playlistsvc.Playlists, insights metrics.Insights, libraryService core.Library, userService core.User, maintenance core.Maintenance, pluginManager PluginManager, imgUpload artwork.Uploader, provider external.Provider) *Router {
-	r := &Router{ds: ds, share: share, playlists: playlists, insights: insights, libs: libraryService, users: userService, maintenance: maintenance, pluginManager: pluginManager, imgUpload: imgUpload, provider: provider}
+func New(ds model.DataStore, share core.Share, playlists playlistsvc.Playlists, insights metrics.Insights, libraryService core.Library, userService core.User, maintenance core.Maintenance, pluginManager PluginManager, imgUpload artwork.Uploader, provider external.Provider, ff ffmpeg.FFmpeg) *Router {
+	r := &Router{ds: ds, share: share, playlists: playlists, insights: insights, libs: libraryService, users: userService, maintenance: maintenance, pluginManager: pluginManager, imgUpload: imgUpload, provider: provider, ff: ff}
 	r.Handler = r.routes()
 	return r
 }
@@ -77,6 +79,9 @@ func (api *Router) routes() http.Handler {
 		api.addRadioRoute(r)
 		api.addLyricsOverrideRoute(r)
 		api.R(r, "/furiganabinding", model.FuriganaBinding{}, true)
+		api.R(r, "/musiccard", model.MusicCard{}, true)
+		api.R(r, "/musiccardsnippet", model.MusicCardSnippet{}, true)
+		api.addMusicCardClipRoute(r)
 		api.R(r, "/tag", model.Tag{}, false)
 		api.R(r, "/scrobble", model.Scrobble{}, false)
 		if conf.Server.EnableSharing {

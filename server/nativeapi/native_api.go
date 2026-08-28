@@ -81,7 +81,9 @@ func (api *Router) routes() http.Handler {
 		api.R(r, "/furiganabinding", model.FuriganaBinding{}, true)
 		api.R(r, "/musiccard", model.MusicCard{}, true)
 		api.R(r, "/musiccardsnippet", model.MusicCardSnippet{}, true)
+		api.R(r, "/musiccardreview", model.MusicCardReview{}, false)
 		api.addMusicCardClipRoute(r)
+		api.addMusicCardReviewGradeRoute(r)
 		api.R(r, "/tag", model.Tag{}, false)
 		api.R(r, "/scrobble", model.Scrobble{}, false)
 		if conf.Server.EnableSharing {

@@ -37,6 +37,7 @@ type DataStore interface {
 	FuriganaBinding(ctx context.Context) FuriganaBindingRepository
 	MusicCard(ctx context.Context) MusicCardRepository
 	MusicCardSnippet(ctx context.Context) MusicCardSnippetRepository
+	MusicCardReview(ctx context.Context) MusicCardReviewRepository
 	Share(ctx context.Context) ShareRepository
 	Property(ctx context.Context) PropertyRepository
 	User(ctx context.Context) UserRepository

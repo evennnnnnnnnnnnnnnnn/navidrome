@@ -81,6 +81,10 @@ func (s *SQLStore) MusicCardSnippet(ctx context.Context) model.MusicCardSnippetR
 	return NewMusicCardSnippetRepository(ctx, s.getDBXBuilder())
 }
 
+func (s *SQLStore) MusicCardReview(ctx context.Context) model.MusicCardReviewRepository {
+	return NewMusicCardReviewRepository(ctx, s.getDBXBuilder())
+}
+
 func (s *SQLStore) UserProps(ctx context.Context) model.UserPropsRepository {
 	return NewUserPropsRepository(ctx, s.getDBXBuilder())
 }
@@ -147,6 +151,8 @@ func (s *SQLStore) Resource(ctx context.Context, m any) model.ResourceRepository
 		return s.MusicCard(ctx).(model.ResourceRepository)
 	case model.MusicCardSnippet:
 		return s.MusicCardSnippet(ctx).(model.ResourceRepository)
+	case model.MusicCardReview:
+		return s.MusicCardReview(ctx).(model.ResourceRepository)
 	case model.Share:
 		return s.Share(ctx).(model.ResourceRepository)
 	case model.Tag:

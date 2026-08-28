@@ -31,6 +31,7 @@ type MockDataStore struct {
 	MockedFuriganaBinding  model.FuriganaBindingRepository
 	MockedMusicCard        model.MusicCardRepository
 	MockedMusicCardSnippet model.MusicCardSnippetRepository
+	MockedMusicCardReview  model.MusicCardReviewRepository
 	MockedPlugin           model.PluginRepository
 	MockedArtwork          model.ArtworkRepository
 	MockedArtworkQueue     model.ArtworkQueueRepository
@@ -326,6 +327,19 @@ func (db *MockDataStore) MusicCardSnippet(ctx context.Context) model.MusicCardSn
 	}
 	db.MockedMusicCardSnippet = CreateMockMusicCardSnippetRepo()
 	return db.MockedMusicCardSnippet
+}
+
+func (db *MockDataStore) MusicCardReview(ctx context.Context) model.MusicCardReviewRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedMusicCardReview != nil {
+		return db.MockedMusicCardReview
+	}
+	if db.RealDS != nil {
+		return db.RealDS.MusicCardReview(ctx)
+	}
+	db.MockedMusicCardReview = CreateMockMusicCardReviewRepo()
+	return db.MockedMusicCardReview
 }
 
 func (db *MockDataStore) Plugin(ctx context.Context) model.PluginRepository {

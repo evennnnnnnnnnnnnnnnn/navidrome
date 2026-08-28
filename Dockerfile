@@ -160,7 +160,14 @@ LABEL org.opencontainers.image.source="https://github.com/navidrome/navidrome"
 
 # Install runtime dependencies
 # - libwebp + symlinks: enables native WebP encoding via purego/dlopen
-RUN apk add -U --no-cache ffmpeg mpv sqlite libwebp libwebpdemux libwebpmux && \
+# - nodejs: yt-dlp needs a JavaScript runtime to solve YouTube's player challenges
+#   (core/ytimport/ytimport.go accepts deno or node; node is the smaller of the two here)
+# - yt-dlp from PyPI, NOT from apk: alpine 3.20 pins yt-dlp 2024.12.03, which is far
+#   too old to extract from YouTube today. YouTube breaks extractors every few weeks,
+#   so the version must be current at build time — which also makes the weekly
+#   scheduled image rebuild meaningful instead of rebuilding the same dead version.
+RUN apk add -U --no-cache ffmpeg mpv sqlite libwebp libwebpdemux libwebpmux python3 py3-pip nodejs && \
+    pip install --no-cache-dir --break-system-packages yt-dlp && \
     for lib in libwebp libwebpdemux libwebpmux; do \
         target=$(ls /usr/lib/$lib.so.* 2>/dev/null | head -1) && \
         [ -n "$target" ] && ln -sf "$target" /usr/lib/$lib.so; \

@@ -44,3 +44,6 @@ go.work*
 
 # Temp benchmark files
 zz_*_test.go
+
+# Generated artwork cache written by a running server
+artwork/

@@ -101,10 +101,9 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 			Expect(err).To(Equal(model.ErrNotFound))
 		})
 
-		It("lets an admin attach a snippet to any user's card", func() {
+		It("does not let an admin attach a snippet to another user's card", func() {
 			s := snippet(regularCard.ID)
-			Expect(adminRepo.Put(s)).To(Succeed())
-			Expect(s.ID).ToNot(BeEmpty())
+			Expect(adminRepo.Put(s)).To(Equal(rest.ErrPermissionDenied))
 		})
 	})
 
@@ -200,14 +199,15 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 			Expect(err).To(Equal(model.ErrNotFound))
 		})
 
-		It("lets an admin read and delete any user's snippet", func() {
-			got, err := adminRepo.Get(victim.ID)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(got.ID).To(Equal(victim.ID))
-
-			Expect(adminRepo.Delete(victim.ID)).To(Succeed())
-			_, err = regularRepo.Get(victim.ID)
+		It("does not let an admin read or delete another user's snippet", func() {
+			_, err := adminRepo.Get(victim.ID)
 			Expect(err).To(Equal(model.ErrNotFound))
+
+			Expect(adminRepo.Delete(victim.ID)).To(Equal(rest.ErrPermissionDenied))
+
+			survived, err := regularRepo.Get(victim.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(survived.ID).To(Equal(victim.ID))
 		})
 
 		It("returns not-found when deleting a nonexistent snippet", func() {
@@ -232,7 +232,7 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 
 			Expect(regularCardRepo.Delete(regularCard.ID)).To(Succeed())
 
-			_, err := adminRepo.Get(s.ID)
+			_, err := regularRepo.Get(s.ID)
 			Expect(err).To(Equal(model.ErrNotFound), "snippet must be gone once its card is deleted")
 		})
 
@@ -249,7 +249,7 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 
 			Expect(mediaFileRepo.Delete(mf.ID)).To(Succeed())
 
-			_, err := adminRepo.Get(s.ID)
+			_, err := regularRepo.Get(s.ID)
 			Expect(err).To(Equal(model.ErrNotFound), "snippet must be gone once its media file is deleted")
 		})
 	})

@@ -167,14 +167,15 @@ var _ = Describe("MusicCardRepository", func() {
 			Expect(err).To(Equal(model.ErrNotFound))
 		})
 
-		It("lets an admin read and delete any user's card", func() {
-			got, err := adminRepo.Get(victim.ID)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(got.ID).To(Equal(victim.ID))
+		It("does not let an admin read or delete another user's card", func() {
+			_, err := adminRepo.Get(victim.ID)
+			Expect(err).To(Equal(model.ErrNotFound), "cards are private study data - being an admin is not a licence to read them")
 
-			Expect(adminRepo.Delete(victim.ID)).To(Succeed())
-			_, err = regularRepo.Get(victim.ID)
-			Expect(err).To(Equal(model.ErrNotFound))
+			Expect(adminRepo.Delete(victim.ID)).To(Equal(rest.ErrPermissionDenied))
+
+			survived, err := regularRepo.Get(victim.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(survived.ID).To(Equal(victim.ID))
 		})
 
 		It("returns not-found when deleting a nonexistent card", func() {
@@ -225,12 +226,15 @@ var _ = Describe("MusicCardRepository", func() {
 			disposable := model.User{UserName: "music-card-cascade-test-user", Name: "Cascade Test", Email: "musiccard-cascade@example.com"}
 			Expect(userRepo.Put(&disposable)).To(Succeed())
 
+			// Read back as the owner, not as an admin: ownership scoping applies to admins too, so
+			// an admin read would return not-found whether or not the cascade fired.
+			disposableRepo := repoAs(disposable)
 			c := card()
-			Expect(repoAs(disposable).Put(c)).To(Succeed())
+			Expect(disposableRepo.Put(c)).To(Succeed())
 
 			Expect(userRepo.Delete(disposable.ID)).To(Succeed())
 
-			_, err := adminRepo.Get(c.ID)
+			_, err := disposableRepo.Get(c.ID)
 			Expect(err).To(Equal(model.ErrNotFound), "card must be gone once its owning user is deleted")
 		})
 	})

@@ -30,11 +30,12 @@ func NewMusicCardSnippetRepository(ctx context.Context, db dbx.Builder) model.Mu
 }
 
 // ownerFilter returns the predicate restricting access to snippets whose parent card is owned by
-// the logged-in user. It returns nil for admins and for headless/system contexts (invalid user),
-// meaning "no ownership restriction" - mirroring sqlRepository.ownerFilter's contract, but scoped
-// through card_id instead of an unqualified user_id column.
+// the logged-in user. It returns nil only for headless/system contexts (invalid user), meaning "no
+// ownership restriction" - mirroring sqlRepository.ownerFilter under strictOwnership, but scoped
+// through card_id instead of an unqualified user_id column. Admins are scoped like everyone else,
+// because a snippet is private card content and not an administrable resource.
 func (r *musicCardSnippetRepository) ownerFilter() Sqlizer {
-	if usr := loggedUser(r.ctx); !usr.IsAdmin && usr.ID != invalidUserId {
+	if usr := loggedUser(r.ctx); usr.ID != invalidUserId {
 		return Expr("card_id in (select id from music_card where user_id = ?)", usr.ID)
 	}
 	return nil
@@ -85,17 +86,17 @@ func (r *musicCardSnippetRepository) cardOwnerID(cardID string) (string, error) 
 	return res.UserID, nil
 }
 
-// checkCardOwnership verifies the caller may attach/see snippets on cardID: admins and headless
-// contexts pass unconditionally (once the card is confirmed to exist), everyone else must own the
-// card. Returns model.ErrNotFound if the card doesn't exist, rest.ErrPermissionDenied if it exists
-// but belongs to someone else.
+// checkCardOwnership verifies the caller may attach/see snippets on cardID: headless contexts pass
+// unconditionally (once the card is confirmed to exist), every logged-in caller - admins included -
+// must own the card. Returns model.ErrNotFound if the card doesn't exist,
+// rest.ErrPermissionDenied if it exists but belongs to someone else.
 func (r *musicCardSnippetRepository) checkCardOwnership(cardID string) error {
 	ownerID, err := r.cardOwnerID(cardID)
 	if err != nil {
 		return err
 	}
 	usr := loggedUser(r.ctx)
-	if !usr.IsAdmin && usr.ID != invalidUserId && ownerID != usr.ID {
+	if usr.ID != invalidUserId && ownerID != usr.ID {
 		return rest.ErrPermissionDenied
 	}
 	return nil

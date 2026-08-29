@@ -106,9 +106,9 @@ var _ = Describe("MusicCardReviewRepository", func() {
 			Expect(regularRepo.Put(rev)).To(Equal(model.ErrNotFound))
 		})
 
-		It("lets an admin write review state on any user's card", func() {
+		It("does not let an admin write review state on another user's card", func() {
 			rev := review(regularCard.ID, time.Now())
-			Expect(adminRepo.Put(rev)).To(Succeed())
+			Expect(adminRepo.Put(rev)).To(Equal(rest.ErrPermissionDenied))
 		})
 	})
 
@@ -140,27 +140,35 @@ var _ = Describe("MusicCardReviewRepository", func() {
 			Expect(err).To(Equal(model.ErrNotFound))
 		})
 
-		It("lets an admin see every user's review state", func() {
+		It("does not let an admin see other users' review state", func() {
 			all, err := adminRepo.GetAll()
 			Expect(err).ToNot(HaveOccurred())
-			Expect(len(all)).To(BeNumerically(">=", 2))
+			Expect(all).To(BeEmpty(), "the admin owns no cards, so it must see no review state")
+
+			_, err = adminRepo.Get(mine.ID)
+			Expect(err).To(Equal(model.ErrNotFound))
 		})
 	})
 
 	Describe("due_before filter", func() {
+		// Both cards belong to regularUser: ownership scoping applies to admins too, so the filter
+		// has to be exercised from inside a single user's own queue.
 		BeforeEach(func() {
+			laterCard := &model.MusicCard{KanjiText: "音楽"}
+			Expect(regularCardRepo.Put(laterCard)).To(Succeed())
+
 			// Same-day timestamps on purpose: stored values carry the local utc-offset while the
 			// filter value is a UTC "Z" string, so this catches any lexical (non-normalized)
 			// datetime comparison.
 			overdue := review(regularCard.ID, time.Now().Add(-10*time.Minute))
 			Expect(regularRepo.Put(overdue)).To(Succeed())
 
-			future := review(thirdCard.ID, time.Now().Add(10*time.Minute))
-			Expect(thirdRepo.Put(future)).To(Succeed())
+			future := review(laterCard.ID, time.Now().Add(10*time.Minute))
+			Expect(regularRepo.Put(future)).To(Succeed())
 		})
 
 		It("returns only rows due at or before the given moment", func() {
-			due, err := adminRepo.GetAll(model.QueryOptions{
+			due, err := regularRepo.GetAll(model.QueryOptions{
 				Filters: dueBeforeFilter("due_before", time.Now().UTC().Format(time.RFC3339)),
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -169,7 +177,7 @@ var _ = Describe("MusicCardReviewRepository", func() {
 		})
 
 		It("matches nothing for an unparseable value", func() {
-			due, err := adminRepo.GetAll(model.QueryOptions{
+			due, err := regularRepo.GetAll(model.QueryOptions{
 				Filters: dueBeforeFilter("due_before", "not-a-time"),
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -184,7 +192,7 @@ var _ = Describe("MusicCardReviewRepository", func() {
 
 			Expect(regularCardRepo.Delete(regularCard.ID)).To(Succeed())
 
-			_, err := adminRepo.Get(rev.ID)
+			_, err := regularRepo.Get(rev.ID)
 			Expect(err).To(Equal(model.ErrNotFound), "review state must be gone once its card is deleted (FK cascade)")
 		})
 	})

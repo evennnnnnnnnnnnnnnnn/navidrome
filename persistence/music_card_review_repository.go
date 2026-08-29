@@ -48,11 +48,11 @@ func NewMusicCardReviewRepository(ctx context.Context, db dbx.Builder) model.Mus
 }
 
 // ownerFilter returns the predicate restricting access to review rows whose parent card is owned
-// by the logged-in user. It returns nil for admins and for headless/system contexts (invalid
-// user), meaning "no ownership restriction" - the same contract as
-// musicCardSnippetRepository.ownerFilter.
+// by the logged-in user. It returns nil only for headless/system contexts (invalid user), meaning
+// "no ownership restriction" - the same contract as musicCardSnippetRepository.ownerFilter, admins
+// included.
 func (r *musicCardReviewRepository) ownerFilter() Sqlizer {
-	if usr := loggedUser(r.ctx); !usr.IsAdmin && usr.ID != invalidUserId {
+	if usr := loggedUser(r.ctx); usr.ID != invalidUserId {
 		return Expr("card_id in (select id from music_card where user_id = ?)", usr.ID)
 	}
 	return nil
@@ -113,25 +113,25 @@ func (r *musicCardReviewRepository) cardOwnerID(cardID string) (string, error) {
 	return res.UserID, nil
 }
 
-// checkCardOwnership verifies the caller may hold review state on cardID: admins and headless
-// contexts pass unconditionally (once the card is confirmed to exist), everyone else must own the
-// card. Returns model.ErrNotFound if the card doesn't exist, rest.ErrPermissionDenied if it
-// exists but belongs to someone else.
+// checkCardOwnership verifies the caller may hold review state on cardID: headless contexts pass
+// unconditionally (once the card is confirmed to exist), every logged-in caller - admins included -
+// must own the card. Returns model.ErrNotFound if the card doesn't exist,
+// rest.ErrPermissionDenied if it exists but belongs to someone else.
 func (r *musicCardReviewRepository) checkCardOwnership(cardID string) error {
 	ownerID, err := r.cardOwnerID(cardID)
 	if err != nil {
 		return err
 	}
 	usr := loggedUser(r.ctx)
-	if !usr.IsAdmin && usr.ID != invalidUserId && ownerID != usr.ID {
+	if usr.ID != invalidUserId && ownerID != usr.ID {
 		return rest.ErrPermissionDenied
 	}
 	return nil
 }
 
-// Put upserts the review row at its card_id natural key, verifying the caller owns (or is admin
-// of) that card first - the payload's card_id is trusted only after this check, so review state
-// can never be attached to another user's card.
+// Put upserts the review row at its card_id natural key, verifying the caller owns that card first
+// - the payload's card_id is trusted only after this check, so review state can never be attached
+// to another user's card.
 func (r *musicCardReviewRepository) Put(rev *model.MusicCardReview) error {
 	if err := r.checkCardOwnership(rev.CardID); err != nil {
 		return err

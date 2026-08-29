@@ -20,12 +20,17 @@ func NewMusicCardRepository(ctx context.Context, db dbx.Builder) model.MusicCard
 	r := &musicCardRepository{}
 	r.ctx = ctx
 	r.db = db
+	// Cards are private study data, not an administrable resource, so ownership scoping applies to
+	// admins too - this is what makes addRestriction/updateOwned/deleteOwned scope every logged-in
+	// caller below.
+	r.strictOwnership = true
 	r.registerModel(&model.MusicCard{}, nil)
 	return r
 }
 
-// newRestSelect returns a select scoped to the current user: ownerFilter() restricts non-admin,
-// non-headless callers to their own rows and is a no-op (nil) for admins.
+// newRestSelect returns a select scoped to the current user: ownerFilter() restricts every
+// logged-in caller, admins included, to their own rows, and is a no-op (nil) only for headless
+// contexts.
 func (r *musicCardRepository) newRestSelect(options ...model.QueryOptions) SelectBuilder {
 	return r.newSelect(options...).Where(r.addRestriction())
 }
@@ -130,8 +135,7 @@ func (r *musicCardRepository) Save(entity any) (string, error) {
 }
 
 // Update is ownership-restricted: updateOwned matches the row only when it is owned by the caller
-// (or the caller is admin) and never writes user_id, so ownership cannot be reassigned via a
-// spoofed payload.
+// and never writes user_id, so ownership cannot be reassigned via a spoofed payload.
 func (r *musicCardRepository) Update(id string, entity any, cols ...string) error {
 	mc := entity.(*model.MusicCard)
 	mc.ID = id

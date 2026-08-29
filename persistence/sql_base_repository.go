@@ -42,6 +42,11 @@ type sqlRepository struct {
 	tableName string
 	db        dbx.Builder
 
+	// strictOwnership makes ownerFilter scope admins to their own rows too. Set it in the
+	// repository's constructor for tables holding private per-user content rather than an
+	// administrable server resource. See ownerFilter.
+	strictOwnership bool
+
 	// Do not set these fields manually, they are set by the registerModel method
 	filterMappings     map[string]filterFunc
 	isFieldWhiteListed fieldWhiteListedFunc
@@ -60,13 +65,19 @@ func loggedUser(ctx context.Context) *model.User {
 }
 
 // ownerFilter returns the predicate restricting access to rows owned by the logged-in user, for
-// tables with a user_id column. It returns nil for admins and for headless/system contexts (invalid
-// user), meaning "no ownership restriction". Callers should skip the WHERE clause when it is nil.
+// tables with a user_id column. It returns nil for headless/system contexts (invalid user) and, on
+// repositories that leave strictOwnership unset, for admins - meaning "no ownership restriction".
+// Callers should skip the WHERE clause when it is nil.
+//
+// The admin exemption is what makes players and shares administrable. It is wrong for tables that
+// hold private per-user content, where being an admin is a role on the server and not a licence to
+// read another user's data; those repositories set strictOwnership and are scoped like everyone
+// else. The headless exemption is never conditional - background jobs run with no user at all.
 //
 // The predicate uses an unqualified user_id, so it only works on queries where that column is
 // unambiguous (no join introducing a second user_id).
 func (r sqlRepository) ownerFilter() Sqlizer {
-	if usr := loggedUser(r.ctx); !usr.IsAdmin && usr.ID != invalidUserId {
+	if usr := loggedUser(r.ctx); usr.ID != invalidUserId && (r.strictOwnership || !usr.IsAdmin) {
 		return Eq{"user_id": usr.ID}
 	}
 	return nil

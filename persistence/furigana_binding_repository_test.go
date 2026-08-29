@@ -204,14 +204,15 @@ var _ = Describe("FuriganaBindingRepository", func() {
 			Expect(err).To(Equal(model.ErrNotFound))
 		})
 
-		It("lets an admin read and delete any user's binding", func() {
-			got, err := adminRepo.Get(victim.ID)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(got.ID).To(Equal(victim.ID))
+		It("does not let an admin read or delete another user's binding", func() {
+			_, err := adminRepo.Get(victim.ID)
+			Expect(err).To(Equal(model.ErrNotFound), "bindings are a user's own reading choices - being an admin is not a licence to read them")
 
-			Expect(adminRepo.Delete(victim.ID)).To(Succeed())
-			_, err = regularRepo.Get(victim.ID)
-			Expect(err).To(Equal(model.ErrNotFound))
+			Expect(adminRepo.Delete(victim.ID)).To(Equal(rest.ErrPermissionDenied))
+
+			survived, err := regularRepo.Get(victim.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(survived.ID).To(Equal(victim.ID))
 		})
 
 		It("returns not-found when deleting a nonexistent binding", func() {
@@ -245,12 +246,15 @@ var _ = Describe("FuriganaBindingRepository", func() {
 			disposable := model.User{UserName: "furigana-cascade-test-user", Name: "Cascade Test", Email: "cascade@example.com"}
 			Expect(userRepo.Put(&disposable)).To(Succeed())
 
+			// Read back as the owner, not as an admin: ownership scoping applies to admins too, so
+			// an admin read would return not-found whether or not the cascade fired.
+			disposableRepo := repoAs(disposable)
 			b := binding()
-			Expect(repoAs(disposable).Put(b)).To(Succeed())
+			Expect(disposableRepo.Put(b)).To(Succeed())
 
 			Expect(userRepo.Delete(disposable.ID)).To(Succeed())
 
-			_, err := adminRepo.Get(b.ID)
+			_, err := disposableRepo.Get(b.ID)
 			Expect(err).To(Equal(model.ErrNotFound), "binding must be gone once its owning user is deleted")
 		})
 	})

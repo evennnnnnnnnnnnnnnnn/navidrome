@@ -19,6 +19,11 @@ type Maintenance interface {
 	DeleteMissingFiles(ctx context.Context, ids []string) error
 	// DeleteAllMissingFiles deletes all files marked as missing
 	DeleteAllMissingFiles(ctx context.Context) error
+	// DeleteMediaFiles moves the given media files to the trash folder and removes their
+	// rows. Admin-only, and only when Deletion.Enabled is set. See deletion.go.
+	DeleteMediaFiles(ctx context.Context, ids []string) (*DeletionResult, error)
+	// DeleteAlbums does the same for every track of the given albums.
+	DeleteAlbums(ctx context.Context, albumIDs []string) (*DeletionResult, error)
 }
 
 type maintenanceService struct {

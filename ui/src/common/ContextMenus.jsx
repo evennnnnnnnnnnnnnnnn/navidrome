@@ -8,6 +8,7 @@ import MoreVertIcon from '@material-ui/icons/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
 import { makeStyles } from '@material-ui/core/styles'
 import {
+  Confirm,
   useDataProvider,
   useNotify,
   usePermissions,
@@ -30,6 +31,7 @@ import { LoveButton } from './LoveButton'
 import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from './artist'
+import { useDeleteFromLibrary } from './useDeleteFromLibrary'
 
 const useStyles = makeStyles({
   noWrap: {
@@ -68,6 +70,7 @@ const ContextMenu = ({
   songQueryParams,
   hideShare,
   hideInfo,
+  discNumber,
 }) => {
   const classes = useStyles({ color })
   const dataProvider = useDataProvider()
@@ -78,7 +81,9 @@ const ContextMenu = ({
   const [anchorEl, setAnchorEl] = useState(null)
 
   const isArtist = resource === 'artist'
+  const isAlbum = resource === 'album'
   const downloadSize = isArtist ? artistDownloadSize(record) : record?.size
+  const deleteFromLibrary = useDeleteFromLibrary('album')
 
   const options = {
     play: {
@@ -153,6 +158,18 @@ const ContextMenu = ({
         action: () => dispatch(openExtendedInfoDialog(record)),
       },
     }),
+    // Albums only: deleting a whole artist is a far bigger blast radius, and the server
+    // has no endpoint for it. Destructive, so it goes last and behind a confirmation.
+    //
+    // Hidden on the per-disc header menu too: every other action there is scoped to one
+    // disc via songQueryParams, but deletion is album-wide, so offering it would take the
+    // whole box set when the admin only meant this disc.
+    deleteFromLibrary: {
+      enabled: isAlbum && discNumber === undefined && deleteFromLibrary.enabled,
+      needData: false,
+      label: translate('resources.album.actions.deleteFromLibrary'),
+      action: (record) => deleteFromLibrary.requestDelete([record.id]),
+    },
   }
 
   const handleClick = (e) => {
@@ -237,6 +254,14 @@ const ContextMenu = ({
             ),
         )}
       </Menu>
+      <Confirm
+        isOpen={deleteFromLibrary.isOpen}
+        loading={deleteFromLibrary.loading}
+        title={'message.deleteFromLibraryAlbumTitle'}
+        content={'message.deleteFromLibraryAlbumContent'}
+        onConfirm={deleteFromLibrary.confirm}
+        onClose={deleteFromLibrary.cancel}
+      />
     </span>
   )
 }

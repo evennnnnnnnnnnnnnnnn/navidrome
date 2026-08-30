@@ -13,14 +13,21 @@ vi.mock('../subsonic', () => ({
   default: { getSimilarSongs2: vi.fn() },
 }))
 
-vi.mock('../config', () => ({
-  default: {
-    enableDownloads: true,
-    enableFavourites: true,
-    enableSharing: true,
-    enableExternalServices: true,
-  },
-}))
+const { mockConfig, mockPermissions, mockDeleteFromLibrary } = vi.hoisted(
+  () => ({
+    mockConfig: {
+      enableDownloads: true,
+      enableFavourites: true,
+      enableSharing: true,
+      enableExternalServices: true,
+      enableDeletion: false,
+    },
+    mockPermissions: { value: 'admin' },
+    mockDeleteFromLibrary: vi.fn(),
+  }),
+)
+
+vi.mock('../config', () => ({ default: mockConfig }))
 
 const mockDispatch = vi.fn()
 vi.mock('react-redux', () => ({ useDispatch: () => mockDispatch }))
@@ -33,11 +40,14 @@ vi.mock('react-admin', async (importOriginal) => {
   return {
     ...actual,
     useNotify: () => mockNotify,
+    usePermissions: () => ({ permissions: mockPermissions.value }),
+    useRefresh: () => vi.fn(),
     useRedirect: () => (url) => {
       window.location.hash = `#${url}`
     },
     useDataProvider: () => ({
       getPlaylists: getPlaylistsMock,
+      deleteFromLibrary: mockDeleteFromLibrary,
       inspect: vi.fn().mockResolvedValue({
         data: { rawTags: {} },
       }),
@@ -49,6 +59,8 @@ describe('SongContextMenu', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.location.hash = ''
+    mockConfig.enableDeletion = false
+    mockPermissions.value = 'admin'
     getPlaylistsMock.mockResolvedValue({
       data: [{ id: 'pl1', name: 'Pl 1' }],
     })
@@ -222,6 +234,93 @@ describe('SongContextMenu', () => {
       expect(id).toBe('actualSongId')
       // Verify seed song data is included
       expect(data['actualSongId']).toBeDefined()
+    })
+  })
+  describe('delete from library', () => {
+    const renderMenu = (record) => {
+      render(
+        <TestContext>
+          <SongContextMenu record={record} resource="song" />
+        </TestContext>,
+      )
+      fireEvent.click(screen.getAllByRole('button')[1])
+    }
+
+    beforeEach(() => {
+      mockConfig.enableDeletion = true
+    })
+
+    it('shows the item for admins', () => {
+      renderMenu({ id: 'song1', size: 1 })
+      expect(
+        screen.getByText('resources.song.actions.deleteFromLibrary'),
+      ).toBeInTheDocument()
+    })
+
+    it('hides the item for regular users', () => {
+      mockPermissions.value = 'regular'
+      renderMenu({ id: 'song1', size: 1 })
+      expect(
+        screen.queryByText('resources.song.actions.deleteFromLibrary'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('hides the item when the server has deletion turned off', () => {
+      mockConfig.enableDeletion = false
+      renderMenu({ id: 'song1', size: 1 })
+      expect(
+        screen.queryByText('resources.song.actions.deleteFromLibrary'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('asks for confirmation instead of deleting straight away', () => {
+      renderMenu({ id: 'song1', size: 1 })
+      fireEvent.click(
+        screen.getByText('resources.song.actions.deleteFromLibrary'),
+      )
+      expect(mockDeleteFromLibrary).not.toHaveBeenCalled()
+      expect(
+        screen.getByText('message.deleteFromLibrarySongTitle'),
+      ).toBeInTheDocument()
+    })
+
+    it('deletes the song once confirmed', async () => {
+      mockDeleteFromLibrary.mockResolvedValue({ data: { count: 1 } })
+      renderMenu({ id: 'song1', size: 1 })
+      fireEvent.click(
+        screen.getByText('resources.song.actions.deleteFromLibrary'),
+      )
+      fireEvent.click(screen.getByText('ra.action.confirm'))
+
+      await waitFor(() =>
+        expect(mockDeleteFromLibrary).toHaveBeenCalledWith('song', ['song1']),
+      )
+    })
+
+    // In a playlist the row id is the playlist-track id; the media file id is the one the
+    // server can actually delete.
+    it('uses mediaFileId when the row carries one', async () => {
+      mockDeleteFromLibrary.mockResolvedValue({ data: { count: 1 } })
+      renderMenu({ id: 'playlistTrack1', mediaFileId: 'actualSongId', size: 1 })
+      fireEvent.click(
+        screen.getByText('resources.song.actions.deleteFromLibrary'),
+      )
+      fireEvent.click(screen.getByText('ra.action.confirm'))
+
+      await waitFor(() =>
+        expect(mockDeleteFromLibrary).toHaveBeenCalledWith('song', [
+          'actualSongId',
+        ]),
+      )
+    })
+
+    it('does not delete when the dialog is cancelled', () => {
+      renderMenu({ id: 'song1', size: 1 })
+      fireEvent.click(
+        screen.getByText('resources.song.actions.deleteFromLibrary'),
+      )
+      fireEvent.click(screen.getByText('ra.action.cancel'))
+      expect(mockDeleteFromLibrary).not.toHaveBeenCalled()
     })
   })
 })

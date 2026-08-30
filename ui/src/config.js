@@ -43,6 +43,8 @@ const defaultConfig = {
   separator: '/',
   enableInspect: true,
   pluginsEnabled: true,
+  // Mirrors Deletion.Enabled on the server, which is off unless explicitly turned on.
+  enableDeletion: false,
 }
 
 let config

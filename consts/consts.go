@@ -11,7 +11,9 @@ import (
 const (
 	AppName = "navidrome"
 
-	DefaultDbPath                 = "navidrome.db?cache=shared&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal"
+	DefaultDbPath = "navidrome.db?cache=shared&_busy_timeout=15000&_journal_mode=WAL&_foreign_keys=on&synchronous=normal"
+	// DefaultTrashFolder is where deleted media files are moved to, under DataFolder.
+	DefaultTrashFolder            = "trash"
 	InitialSetupFlagKey           = "InitialSetup"
 	FullScanAfterMigrationFlagKey = "FullScanAfterMigration"
 	// PlaylistsImportPendingFlagKey marks that playlist import was deferred because

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import PropTypes from 'prop-types'
-import { Field, Form } from 'react-final-form'
+import { Field, Form, FormSpy } from 'react-final-form'
 import { useDispatch } from 'react-redux'
 import Button from '@material-ui/core/Button'
 import Card from '@material-ui/core/Card'
@@ -23,6 +23,8 @@ import useCurrentTheme from '../themes/useCurrentTheme'
 import config from '../config'
 import { clearQueue } from '../actions'
 import { INSIGHTS_DOC_URL } from '../consts.js'
+import { PasswordStrengthMeter } from '../common/PasswordStrengthMeter'
+import { validatePasswordStrength } from '../user/userValidation'
 
 const useStyles = makeStyles(
   (theme) => ({
@@ -282,6 +284,14 @@ const FormSignUp = ({ loading, handleSubmit, validate }) => {
                     type="password"
                     disabled={loading}
                   />
+                  <FormSpy subscription={{ values: true }}>
+                    {({ values }) => (
+                      <PasswordStrengthMeter
+                        password={values.password}
+                        username={values.username}
+                      />
+                    )}
+                  </FormSpy>
                 </div>
                 <div className={classes.input}>
                   <Field
@@ -370,6 +380,16 @@ const Login = ({ location }) => {
       }
       if (values.confirmPassword !== values.password) {
         errors.confirmPassword = translate('ra.validation.passwordDoesNotMatch')
+      }
+      // The first admin is created before any login exists, so this is the one
+      // account whose password nothing else gets a chance to gate.
+      const passwordError = validatePasswordStrength(
+        values.password,
+        values,
+        translate,
+      )
+      if (passwordError) {
+        errors.password = passwordError
       }
       return errors
     },

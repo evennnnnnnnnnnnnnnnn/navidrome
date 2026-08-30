@@ -20,6 +20,7 @@ import (
 	"github.com/navidrome/navidrome/model/id"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils"
+	"github.com/navidrome/navidrome/utils/pwdstrength"
 	"github.com/navidrome/navidrome/utils/slice"
 	"github.com/pocketbase/dbx"
 )
@@ -273,6 +274,9 @@ func (r *userRepository) Save(entity any) (string, error) {
 		return "", rest.ErrPermissionDenied
 	}
 	u := entity.(*model.User)
+	if err := ValidatePasswordStrength(u); err != nil {
+		return "", err
+	}
 	if err := validateUsernameUnique(r, u); err != nil {
 		return "", err
 	}
@@ -308,6 +312,9 @@ func (r *userRepository) Update(id string, entity any, _ ...string) error {
 	if err := validatePasswordChange(u, usr); err != nil {
 		return err
 	}
+	if err := ValidatePasswordStrength(u); err != nil {
+		return err
+	}
 	if err := validateUsernameUnique(r, u); err != nil {
 		return err
 	}
@@ -319,6 +326,41 @@ func (r *userRepository) Update(id string, entity any, _ ...string) error {
 		return rest.ErrNotFound
 	}
 	return err
+}
+
+// ValidatePasswordStrength refuses any password that is not Strong, as a
+// rest.ValidationError keyed on "password" so react-admin renders it against the
+// right field.
+//
+// This is deliberately called from the *entry points* that set a password on a
+// user's behalf — Save and Update here, the first-run wizard in server/auth.go,
+// dev auto-setup in server/initial_setup.go, and the prompt in cmd/user.go —
+// rather than from Put. Put is the tighter choke point, but it is also how every
+// test fixture and internal seed writes a user, and moving the rule there would
+// mean rewriting ~50 password literals across 20 upstream test files. On a fork
+// that merges from upstream, that is permanent conflict surface for no security
+// gain: the paths below are the complete set by which a human ever chooses a
+// password. Subsonic cannot set one at all (server/subsonic/api.go:232 returns
+// 501 for createUser/updateUser/changePassword).
+//
+// Reverse-proxy auto-provisioned accounts are exempt: their password is a random
+// sentinel carrying PasswordAutogenPrefix that is never used to authenticate.
+//
+// The bar applies on write only. Passwords already stored keep working; they are
+// held to it the next time they are changed.
+func ValidatePasswordStrength(u *model.User) error {
+	if u.NewPassword == "" || strings.HasPrefix(u.NewPassword, consts.PasswordAutogenPrefix) {
+		return nil
+	}
+	res := pwdstrength.Evaluate(u.NewPassword, u.UserName, u.Email)
+	if res.Level == pwdstrength.Strong {
+		return nil
+	}
+	log.Warn("Rejected a password that is not strong enough", "user", u.UserName,
+		"strength", res.Level.String(), "reasons", strings.Join(res.Reasons, ","))
+	return &rest.ValidationError{Errors: map[string]string{
+		"password": pwdstrength.TooWeakI18nKey,
+	}}
 }
 
 func validatePasswordChange(newUser *model.User, logged *model.User) error {

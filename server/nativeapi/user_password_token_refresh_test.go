@@ -50,7 +50,7 @@ var _ = Describe("PUT /user/{id}: token refresh on self password change", func()
 	})
 
 	It("carries the bumped epoch in the refreshed token, not the epoch the token was minted with", func() {
-		usr := model.User{UserName: "selfchanger", Name: "Self Changer", NewPassword: "old-password"}
+		usr := model.User{UserName: "selfchanger", Name: "Self Changer", NewPassword: "Old-Horse-Battery-9"}
 		Expect(ds.User(GinkgoT().Context()).Put(&usr)).To(Succeed())
 
 		token, err := auth.CreateToken(&usr)
@@ -59,8 +59,8 @@ var _ = Describe("PUT /user/{id}: token refresh on self password change", func()
 		body, _ := json.Marshal(map[string]any{
 			"userName":        usr.UserName,
 			"name":            usr.Name,
-			"currentPassword": "old-password",
-			"password":        "new-password",
+			"currentPassword": "Old-Horse-Battery-9",
+			"password":        "New-Horse-Battery-9",
 		})
 		req := createAuthenticatedRequest(http.MethodPut, "/user/"+usr.ID, bytes.NewBuffer(body), token)
 		w := httptest.NewRecorder()

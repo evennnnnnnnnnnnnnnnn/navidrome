@@ -37,7 +37,7 @@ var _ = Describe("Auth", func() {
 		Describe("createAdmin", func() {
 			var createdAt time.Time
 			BeforeEach(func() {
-				req = httptest.NewRequest("POST", "/createAdmin", strings.NewReader(`{"username":"johndoe", "password":"secret"}`))
+				req = httptest.NewRequest("POST", "/createAdmin", strings.NewReader(`{"username":"johndoe", "password":"Correct-Horse-Battery-9"}`))
 				resp = httptest.NewRecorder()
 				createdAt = time.Now()
 				createAdmin(ds)(resp, req)
@@ -61,6 +61,49 @@ var _ = Describe("Auth", func() {
 				Expect(parsed["name"]).To(Equal("Johndoe"))
 				Expect(parsed["id"]).ToNot(BeEmpty())
 				Expect(parsed["token"]).ToNot(BeEmpty())
+			})
+		})
+
+		Describe("createAdmin password strength", func() {
+			// The first admin is created before anyone can log in, so this handler is
+			// the only thing between a public server and a "secret" password.
+			DescribeTable("rejects a password that is not strong",
+				func(password string) {
+					ds = &tests.MockDataStore{}
+					auth.Init(ds)
+					body := fmt.Sprintf(`{"username":"johndoe", "password":%q}`, password)
+					req = httptest.NewRequest("POST", "/createAdmin", strings.NewReader(body))
+					resp = httptest.NewRecorder()
+					createAdmin(ds)(resp, req)
+
+					Expect(resp.Code).To(Equal(http.StatusBadRequest))
+					Expect(resp.Body.String()).To(ContainSubstring("passwordTooWeak"))
+
+					// And crucially, no account was left behind.
+					_, err := ds.User(context.Background()).FindByUsername("johndoe")
+					Expect(err).To(MatchError(model.ErrNotFound))
+				},
+				Entry("too short", "secret"),
+				Entry("common word dressed up", "Password123!"),
+				Entry("named after the server", "Navidrome2026!"),
+				Entry("a digit run", "12345678"),
+				Entry("medium is not enough", "Tr0ub4dor&3"),
+				Entry("contains the username", "johndoe-Battery-99"),
+				Entry("empty", ""),
+			)
+
+			It("accepts a strong password", func() {
+				ds = &tests.MockDataStore{}
+				auth.Init(ds)
+				req = httptest.NewRequest("POST", "/createAdmin",
+					strings.NewReader(`{"username":"johndoe", "password":"Correct-Horse-Battery-9"}`))
+				resp = httptest.NewRecorder()
+				createAdmin(ds)(resp, req)
+
+				Expect(resp.Code).To(Equal(http.StatusOK))
+				u, err := ds.User(context.Background()).FindByUsername("johndoe")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(u.IsAdmin).To(BeTrue())
 			})
 		})
 

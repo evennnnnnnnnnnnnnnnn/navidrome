@@ -22,6 +22,7 @@ import {
 } from 'react-admin'
 import { Typography } from '@material-ui/core'
 import { Title } from '../common'
+import { PasswordStrengthMeter } from '../common/PasswordStrengthMeter'
 import DeleteUserButton from './DeleteUserButton'
 import { LibrarySelectionField } from './LibrarySelectionField.jsx'
 import { validateUserForm } from './userValidation'
@@ -55,14 +56,22 @@ const CurrentPasswordInput = ({ formData, isMyself, ...rest }) => {
 
 const NewPasswordInput = ({ formData, ...rest }) => {
   const translate = useTranslate()
-  return formData.changePassword ? (
-    <PasswordInput
-      source="password"
-      className="ra-input"
-      label={translate('resources.user.fields.newPassword')}
-      {...rest}
-    />
-  ) : null
+  if (!formData.changePassword) return null
+  return (
+    <>
+      <PasswordInput
+        source="password"
+        className="ra-input"
+        label={translate('resources.user.fields.newPassword')}
+        {...rest}
+      />
+      <PasswordStrengthMeter
+        password={formData.password}
+        username={formData.userName}
+        email={formData.email}
+      />
+    </>
+  )
 }
 
 const UserEdit = (props) => {

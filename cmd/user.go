@@ -15,6 +15,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/utils/pwdstrength"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -119,7 +120,11 @@ var (
 	}
 )
 
-func promptPassword() string {
+// promptPassword loops until it gets a strong password, a matching confirmation,
+// or an empty entry to cancel. username and email are passed through to the
+// strength check so a password made out of the account's own name is refused
+// here, with an explanation, rather than at the repository with an i18n key.
+func promptPassword(username, email string) string {
 	for {
 		fmt.Print("Enter new password (press enter with no password to cancel): ")
 		// This cast is necessary for some platforms
@@ -146,11 +151,18 @@ func promptPassword() string {
 			return ""
 		}
 
-		if pass == confirm {
-			return pass
+		if pass != confirm {
+			fmt.Println("Password and password confirmation do not match")
+			continue
 		}
 
-		fmt.Println("Password and password confirmation do not match")
+		if res := pwdstrength.Evaluate(pass, username, email); res.Level != pwdstrength.Strong {
+			fmt.Printf("Password is %s and must be strong: %s\n",
+				res.Level, pwdstrength.Describe(res.Reasons))
+			continue
+		}
+
+		return pass
 	}
 }
 
@@ -163,7 +175,7 @@ func libraryError(libraries model.Libraries) error {
 }
 
 func runCreateUser(ctx context.Context) {
-	password := promptPassword()
+	password := promptPassword(userID, email)
 	if password == "" {
 		log.Fatal("Empty password provided, user creation cancelled")
 	}
@@ -309,7 +321,7 @@ func runUserEdit(ctx context.Context) {
 		}
 
 		if setPassword {
-			password := promptPassword()
+			password := promptPassword(user.UserName, user.Email)
 
 			if password != "" {
 				user.NewPassword = password

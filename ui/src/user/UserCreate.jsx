@@ -15,7 +15,9 @@ import {
 } from 'react-admin'
 import { Typography } from '@material-ui/core'
 import { Title } from '../common'
+import { PasswordStrengthMeter } from '../common/PasswordStrengthMeter'
 import { LibrarySelectionField } from './LibrarySelectionField.jsx'
+import { validatePasswordStrength } from './userValidation'
 
 const UserCreate = (props) => {
   const translate = useTranslate()
@@ -51,17 +53,28 @@ const UserCreate = (props) => {
     [mutate, notify, redirect],
   )
 
-  // Custom validation function
-  const validateUserForm = (values) => {
+  // Library selection is optional for non-admin users since they will be
+  // auto-assigned to default libraries, so the password rule is the only one here.
+  const validateCreateForm = (values) => {
     const errors = {}
-    // Library selection is optional for non-admin users since they will be auto-assigned to default libraries
-    // No validation required for library selection
+    const passwordError = validatePasswordStrength(
+      values.password,
+      values,
+      translate,
+    )
+    if (passwordError) {
+      errors.password = passwordError
+    }
     return errors
   }
 
   return (
     <Create title={<Title subTitle={title} />} {...props}>
-      <SimpleForm save={save} validate={validateUserForm} variant={'outlined'}>
+      <SimpleForm
+        save={save}
+        validate={validateCreateForm}
+        variant={'outlined'}
+      >
         <TextInput
           spellCheck={false}
           source="userName"
@@ -74,6 +87,15 @@ const UserCreate = (props) => {
           source="password"
           validate={[required()]}
         />
+        <FormDataConsumer>
+          {({ formData }) => (
+            <PasswordStrengthMeter
+              password={formData.password}
+              username={formData.userName}
+              email={formData.email}
+            />
+          )}
+        </FormDataConsumer>
         <BooleanInput source="isAdmin" defaultValue={false} />
 
         {/* Conditional Library Selection */}

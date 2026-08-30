@@ -26,6 +26,7 @@ import (
 	"github.com/navidrome/navidrome/model/id"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/utils/gravatar"
+	"github.com/navidrome/navidrome/utils/pwdstrength"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -126,8 +127,24 @@ func createAdmin(ds model.DataStore) func(w http.ResponseWriter, r *http.Request
 			_ = rest.RespondWithError(w, http.StatusForbidden, "Cannot create another first admin")
 			return
 		}
+		// The very first account is the one that matters most: it is an admin, and
+		// on a publicly reachable server it is the whole perimeter.
+		if res := pwdstrength.Evaluate(password, username, ""); res.Level != pwdstrength.Strong {
+			log.Warn(r, "Rejected a weak password for the first admin", "user", username,
+				"strength", res.Level.String())
+			_ = rest.RespondWithJSON(w, http.StatusBadRequest, &rest.ValidationError{
+				Errors: map[string]string{"password": pwdstrength.TooWeakI18nKey},
+			})
+			return
+		}
 		err = createAdminUser(r.Context(), ds, username, password)
 		if err != nil {
+			// A rejected password is the caller's fault, not the server's.
+			var vErr *rest.ValidationError
+			if errors.As(err, &vErr) {
+				_ = rest.RespondWithJSON(w, http.StatusBadRequest, vErr)
+				return
+			}
 			_ = rest.RespondWithError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -149,7 +166,9 @@ func createAdminUser(ctx context.Context, ds model.DataStore, username, password
 	}
 	err := ds.User(ctx).Put(&initialUser)
 	if err != nil {
-		log.Error(ctx, "Could not create initial user", "user", initialUser, err)
+		// Log the name only: initialUser carries the plaintext NewPassword.
+		log.Error(ctx, "Could not create initial user", "user", username, err)
+		return err
 	}
 	return nil
 }

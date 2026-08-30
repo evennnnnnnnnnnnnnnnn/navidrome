@@ -12,6 +12,7 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/id"
+	"github.com/navidrome/navidrome/utils/pwdstrength"
 )
 
 func initialSetup(ds model.DataStore) {
@@ -46,6 +47,13 @@ func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 		panic(fmt.Sprintf("Could not access User table: %s", err))
 	}
 	if c == 0 {
+		// Guarded even though this is a dev convenience: it is set through
+		// configuration, and configuration set in a container env is exactly how a
+		// weak admin password reaches production.
+		if res := pwdstrength.Evaluate(initialPassword, consts.DevInitialUserName, ""); res.Level != pwdstrength.Strong {
+			return fmt.Errorf("DevAutoCreateAdminPassword is %s and must be strong: %s",
+				res.Level, pwdstrength.Describe(res.Reasons))
+		}
 		newID := id.NewRandom()
 		log.Warn("Creating initial admin user. This should only be used for development purposes!!",
 			"user", consts.DevInitialUserName, "password", initialPassword, "id", newID)
@@ -57,9 +65,14 @@ func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 			NewPassword: initialPassword,
 			IsAdmin:     true,
 		}
-		err := users.Put(&initialUser)
+		// Shadowing this would swallow the error and leave setup silently
+		// admin-less — including when DevAutoCreateAdminPassword is not strong
+		// enough to pass the password bar.
+		err = users.Put(&initialUser)
 		if err != nil {
-			log.Error("Could not create initial admin user", "user", initialUser, err)
+			log.Error("Could not create initial admin user. Is DevAutoCreateAdminPassword strong enough?",
+				"user", consts.DevInitialUserName, err)
+			return err
 		}
 	}
 	return err

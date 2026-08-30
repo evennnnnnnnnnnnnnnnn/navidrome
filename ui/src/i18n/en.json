@@ -171,13 +171,30 @@
       },
       "validation": {
         "librariesRequired": "At least one library must be selected for non-admin users",
-        "invalidScrobbleFilter": "Must be valid smart playlist rules. Limit, offset and refresh delay are not supported."
+        "invalidScrobbleFilter": "Must be valid smart playlist rules. Limit, offset and refresh delay are not supported.",
+        "passwordTooWeak": "Password is not strong enough. Use 12+ characters with a mix of upper case, lower case, digits and symbols, or a passphrase of 16+ characters."
       },
       "message": {
         "listenBrainzToken": "Enter your ListenBrainz user token.",
         "clickHereForToken": "Click here to get your token",
         "selectAllLibraries": "Select all libraries",
         "adminAutoLibraries": "Admin users automatically have access to all libraries"
+      },
+      "passwordStrength": {
+        "weak": "Weak",
+        "medium": "Medium",
+        "strong": "Strong"
+      },
+      "passwordReason": {
+        "tooShort": "Use at least 8 characters",
+        "tooLong": "Use at most 256 characters",
+        "needsLength": "Make it longer — 12+ characters, or 16+ for a passphrase",
+        "needsVariety": "Mix upper case, lower case, digits and symbols",
+        "commonPassword": "Based on a commonly guessed password",
+        "containsUsername": "Contains the username",
+        "containsEmail": "Contains the email address",
+        "repeatedCharacters": "Just repeats the same few characters",
+        "sequentialCharacters": "A straight run of letters, digits or keyboard keys"
       }
     },
     "player": {

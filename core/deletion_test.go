@@ -3,8 +3,10 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/conf/configtest"
@@ -411,6 +413,266 @@ var _ = Describe("Deletion", func() {
 			Expect(moveFile(src, dest)).To(Succeed())
 			Expect(dest).To(BeAnExistingFile())
 			Expect(src).ToNot(BeAnExistingFile())
+		})
+
+		// Only EXDEV earns the copy fallback. Copying after a permission error, a busy
+		// file or a source that vanished is a second and weaker attempt at the same move -
+		// and the copy path is the one that can be redirected at a symlink.
+		It("reports the rename error instead of copying when the failure is not cross-device", func() {
+			locked := filepath.Join(libRoot, "locked")
+			Expect(os.MkdirAll(locked, 0o755)).To(Succeed())
+			src := filepath.Join(locked, "stuck.mp3")
+			Expect(os.WriteFile(src, []byte("payload"), 0o644)).To(Succeed())
+			Expect(os.Chmod(locked, 0o555)).To(Succeed())
+			DeferCleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+			dest := filepath.Join(trash, "stuck.mp3")
+			err := moveFile(src, dest)
+			Expect(err).To(HaveOccurred())
+
+			var linkErr *os.LinkError
+			Expect(errors.As(err, &linkErr)).To(BeTrue(), "the rename error must be surfaced, not a later copy error")
+			Expect(linkErr.Op).To(Equal("rename"))
+			Expect(dest).ToNot(BeAnExistingFile(), "no copy is attempted at all")
+		})
+
+		It("reports the rename error for a source that is not there", func() {
+			err := moveFile(filepath.Join(libRoot, "ghost.mp3"), filepath.Join(trash, "ghost.mp3"))
+			Expect(err).To(MatchError(os.ErrNotExist))
+			var linkErr *os.LinkError
+			Expect(errors.As(err, &linkErr)).To(BeTrue())
+		})
+	})
+
+	Describe("copyFile", func() {
+		// resolveLibraryFile rejects symlinks, but that check and the copy are separated by
+		// the rest of the planning loop. Anything with write access to the music folder can
+		// use that window to swap a track for a link to a file the server can read - and
+		// since the trash is normally on another device, the copy path is the one that runs.
+		It("refuses to copy through a symlink", func() {
+			secret := filepath.Join(GinkgoT().TempDir(), "navidrome.db")
+			Expect(os.WriteFile(secret, []byte("SECRET"), 0o644)).To(Succeed())
+			link := filepath.Join(libRoot, "swapped.mp3")
+			Expect(os.Symlink(secret, link)).To(Succeed())
+
+			dest := filepath.Join(trash, "swapped.mp3")
+			Expect(os.MkdirAll(trash, 0o755)).To(Succeed())
+
+			Expect(copyFile(link, dest)).ToNot(Succeed())
+			Expect(dest).ToNot(BeAnExistingFile(), "the symlink target must never reach the trash")
+			Expect(os.ReadFile(secret)).To(Equal([]byte("SECRET")))
+		})
+
+		It("refuses to copy anything that is not a regular file", func() {
+			dir := filepath.Join(libRoot, "adir")
+			Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+			Expect(os.MkdirAll(trash, 0o755)).To(Succeed())
+
+			err := copyFile(dir, filepath.Join(trash, "adir"))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("not a regular file"))
+		})
+	})
+
+	Describe("empty trash batches", func() {
+		// A batch folder whose first move failed holds nothing and has no manifest, but is
+		// indistinguishable from a real deletion to anyone reading the trash root later.
+		It("removes the batch folder when nothing could be moved", func() {
+			locked := filepath.Join(libRoot, "locked")
+			Expect(os.MkdirAll(locked, 0o755)).To(Succeed())
+			victim := writeTrack("stuck", filepath.Join("locked", "stuck.mp3"))
+			Expect(os.Chmod(locked, 0o555)).To(Succeed())
+			DeferCleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+			repo.SetData(model.MediaFiles{victim})
+
+			_, err := service.DeleteMediaFiles(ctx, []string{"stuck"})
+			Expect(err).To(HaveOccurred())
+
+			entries, err := os.ReadDir(trash)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(entries).To(BeEmpty(), "a failed batch must not leave a folder in the trash")
+		})
+
+		It("keeps the batch folder when at least one file made it", func() {
+			locked := filepath.Join(libRoot, "locked")
+			Expect(os.MkdirAll(locked, 0o755)).To(Succeed())
+			victim := writeTrack("stuck", filepath.Join("locked", "stuck.mp3"))
+			good := writeTrack("good", "good.mp3")
+			Expect(os.Chmod(locked, 0o555)).To(Succeed())
+			DeferCleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+			// "good" sorts first, so it is moved before the failure aborts the batch.
+			repo.SetData(model.MediaFiles{good, victim})
+
+			_, err := service.DeleteMediaFiles(ctx, []string{"good", "stuck"})
+			Expect(err).To(HaveOccurred())
+
+			entries, err := os.ReadDir(trash)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(entries).To(HaveLen(1), "the batch holding the moved file must survive")
+		})
+
+		Describe("removeEmptyTree", func() {
+			It("removes a nest of empty folders", func() {
+				// This is the real shape of a failed batch: moveFile creates the
+				// destination's parents before it tries the move.
+				root := filepath.Join(GinkgoT().TempDir(), "batch")
+				Expect(os.MkdirAll(filepath.Join(root, "library-1", "Artist", "Album"), 0o755)).To(Succeed())
+
+				Expect(removeEmptyTree(root)).To(Succeed())
+				Expect(root).ToNot(BeADirectory())
+			})
+
+			It("refuses to touch a tree containing a file", func() {
+				root := filepath.Join(GinkgoT().TempDir(), "batch")
+				nested := filepath.Join(root, "library-1", "Artist")
+				Expect(os.MkdirAll(nested, 0o755)).To(Succeed())
+				keep := filepath.Join(nested, "track.mp3")
+				Expect(os.WriteFile(keep, []byte("PRECIOUS"), 0o644)).To(Succeed())
+
+				Expect(removeEmptyTree(root)).ToNot(Succeed())
+				Expect(os.ReadFile(keep)).To(Equal([]byte("PRECIOUS")))
+				Expect(root).To(BeADirectory())
+			})
+
+			It("refuses to descend through a symlink", func() {
+				outside := GinkgoT().TempDir()
+				Expect(os.WriteFile(filepath.Join(outside, "precious.mp3"), []byte("x"), 0o644)).To(Succeed())
+				root := filepath.Join(GinkgoT().TempDir(), "batch")
+				Expect(os.MkdirAll(root, 0o755)).To(Succeed())
+				Expect(os.Symlink(outside, filepath.Join(root, "link"))).To(Succeed())
+
+				Expect(removeEmptyTree(root)).ToNot(Succeed())
+				Expect(filepath.Join(outside, "precious.mp3")).To(BeAnExistingFile())
+			})
+		})
+	})
+
+	Describe("trash capacity", func() {
+		// The trash defaults to <DataFolder>/trash, which in the standard Docker layout is
+		// a different and much smaller volume than the music folder. Neither a second
+		// device nor a nearly-full one can be staged in a unit test, so the two syscalls
+		// are stubbed and everything above them is the real code.
+		const (
+			musicDev = uint64(1)
+			trashDev = uint64(2)
+		)
+
+		stubVolumes := func(free uint64, libDev uint64) {
+			origFree, origDev := fsFreeBytes, fsDeviceID
+			DeferCleanup(func() { fsFreeBytes, fsDeviceID = origFree, origDev })
+			fsFreeBytes = func(string) (uint64, error) { return free, nil }
+			fsDeviceID = func(path string) (uint64, error) {
+				if strings.HasPrefix(path, libRoot) {
+					return libDev, nil
+				}
+				return trashDev, nil
+			}
+		}
+
+		sized := func(id, relPath string, size int64) model.MediaFile {
+			mf := writeTrack(id, relPath)
+			mf.Size = size
+			return mf
+		}
+
+		It("refuses the whole request when the copy would not fit", func() {
+			stubVolumes(1<<20, musicDev) // 1 MiB free, 512 MiB to copy
+			repo.SetData(model.MediaFiles{sized("mf1", "big.flac", 512<<20)})
+
+			_, err := service.DeleteMediaFiles(ctx, []string{"mf1"})
+			Expect(err).To(MatchError(ErrUnsafeDeletion))
+			Expect(err.Error()).To(ContainSubstring("free"))
+
+			Expect(filepath.Join(libRoot, "big.flac")).To(BeAnExistingFile(), "nothing is moved when the request is refused")
+			Expect(repo.Data).To(HaveKey("mf1"))
+			Expect(trash).ToNot(BeADirectory(), "a refused request must not claim a batch folder")
+		})
+
+		It("sums the whole batch, not just the largest file", func() {
+			stubVolumes(150<<20, musicDev) // each fits on its own, together they do not
+			repo.SetData(model.MediaFiles{
+				sized("mf1", "a.flac", 60<<20),
+				sized("mf2", "b.flac", 60<<20),
+			})
+
+			_, err := service.DeleteMediaFiles(ctx, []string{"mf1", "mf2"})
+			Expect(err).To(MatchError(ErrUnsafeDeletion))
+			Expect(repo.Data).To(And(HaveKey("mf1"), HaveKey("mf2")))
+		})
+
+		It("refuses a request that would fit exactly, leaving no headroom", func() {
+			// The volume holding the trash also holds navidrome.db and its WAL, so filling
+			// it to the last byte breaks every write that follows a successful copy.
+			stubVolumes(10<<20, musicDev)
+			repo.SetData(model.MediaFiles{sized("mf1", "a.flac", 10<<20)})
+
+			_, err := service.DeleteMediaFiles(ctx, []string{"mf1"})
+			Expect(err).To(MatchError(ErrUnsafeDeletion))
+		})
+
+		It("allows a request with room to spare", func() {
+			stubVolumes(4<<30, musicDev) // 4 GiB free
+			repo.SetData(model.MediaFiles{sized("mf1", "a.flac", 10<<20)})
+
+			result, err := service.DeleteMediaFiles(ctx, []string{"mf1"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.DeletedIDs).To(ConsistOf("mf1"))
+		})
+
+		It("does not count files that are only being renamed", func() {
+			// Same device: the move is a rename and costs nothing, so a single-volume
+			// install must still be able to delete an album bigger than its free space -
+			// which is usually the whole point of deleting it.
+			stubVolumes(1, trashDev)
+			repo.SetData(model.MediaFiles{sized("mf1", "huge.flac", 1<<40)})
+
+			result, err := service.DeleteMediaFiles(ctx, []string{"mf1"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.DeletedIDs).To(ConsistOf("mf1"))
+		})
+
+		It("proceeds when the filesystem cannot be measured", func() {
+			// No statfs on this platform, or the folder moved under us. The check is a
+			// safety net, not a gate.
+			origFree, origDev := fsFreeBytes, fsDeviceID
+			DeferCleanup(func() { fsFreeBytes, fsDeviceID = origFree, origDev })
+			fsFreeBytes = func(string) (uint64, error) { return 0, errors.New("not supported") }
+			fsDeviceID = func(string) (uint64, error) { return 0, errors.New("not supported") }
+
+			repo.SetData(model.MediaFiles{sized("mf1", "a.flac", 1<<40)})
+
+			result, err := service.DeleteMediaFiles(ctx, []string{"mf1"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.DeletedIDs).To(ConsistOf("mf1"))
+		})
+
+		It("does not refuse a batch whose sizes were never recorded", func() {
+			stubVolumes(1<<20, musicDev)
+			repo.SetData(model.MediaFiles{writeTrack("mf1", "a.flac")}) // Size stays 0
+
+			result, err := service.DeleteMediaFiles(ctx, []string{"mf1"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.DeletedIDs).To(ConsistOf("mf1"))
+		})
+	})
+
+	Describe("nearestExistingDir", func() {
+		It("returns the folder itself when it exists", func() {
+			Expect(nearestExistingDir(libRoot)).To(Equal(libRoot))
+		})
+
+		It("walks up to the first folder that exists", func() {
+			// The trash folder is only created on the first delete, so the check has to
+			// measure a parent instead.
+			Expect(nearestExistingDir(filepath.Join(libRoot, "a", "b", "c"))).To(Equal(libRoot))
+		})
+
+		It("does not mistake a file for a folder", func() {
+			file := filepath.Join(libRoot, "a.mp3")
+			Expect(os.WriteFile(file, []byte("x"), 0o644)).To(Succeed())
+			Expect(nearestExistingDir(file)).To(Equal(libRoot))
 		})
 	})
 })

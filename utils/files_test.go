@@ -223,3 +223,42 @@ var _ = Describe("FileExists", func() {
 		Expect(result).To(Or(BeTrue(), BeFalse()))      // Should not panic
 	})
 })
+
+var _ = Describe("CheckPathContained", func() {
+	// This is the shared "never leave the library folder" boundary, used by both the
+	// lyrics sidecar writer and the media file deleter, so it is specified here rather
+	// than at either call site.
+	root := filepath.Join(string(filepath.Separator), "music")
+
+	It("accepts a direct child", func() {
+		Expect(utils.CheckPathContained(root, filepath.Join(root, "song.mp3"))).To(Succeed())
+	})
+
+	It("accepts a deeply nested child", func() {
+		Expect(utils.CheckPathContained(root, filepath.Join(root, "Artist", "Album", "song.mp3"))).To(Succeed())
+	})
+
+	It("accepts the root itself", func() {
+		Expect(utils.CheckPathContained(root, root)).To(Succeed())
+	})
+
+	It("rejects the parent of the root", func() {
+		err := utils.CheckPathContained(root, filepath.Dir(root))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("outside"))
+	})
+
+	It("rejects a path that climbs out of the root", func() {
+		escape := filepath.Join(root, "..", "..", "etc", "passwd")
+		Expect(utils.CheckPathContained(root, escape)).To(HaveOccurred())
+	})
+
+	It("rejects a sibling whose name merely starts with the root", func() {
+		// "/musicals" is not inside "/music"; a naive strings.HasPrefix would say it is.
+		Expect(utils.CheckPathContained(root, root+"als")).To(HaveOccurred())
+	})
+
+	It("accepts a child reached through a redundant .. segment", func() {
+		Expect(utils.CheckPathContained(root, filepath.Join(root, "Artist", "..", "song.mp3"))).To(Succeed())
+	})
+})

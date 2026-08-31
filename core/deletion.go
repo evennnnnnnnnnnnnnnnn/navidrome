@@ -8,14 +8,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/dustin/go-humanize"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
+	"github.com/navidrome/navidrome/utils"
 )
 
 var (
@@ -107,11 +109,6 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 
 	// Resolve and validate every path up front. Anything suspicious aborts the request
 	// before a single file has moved.
-	type plannedMove struct {
-		mf  model.MediaFile
-		src string
-		rel string
-	}
 	planned := make([]plannedMove, 0, len(mfs))
 	// Files already gone from disk still get their row removed - that is the missing-file
 	// cleanup case, and there is nothing to move.
@@ -140,6 +137,12 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 		})
 	}
 
+	// The last check that can still refuse the whole request. Everything below this line
+	// starts touching files.
+	if err := checkTrashCapacity(ctx, trashRoot, planned); err != nil {
+		return nil, err
+	}
+
 	// Only claim a trash folder once there is something to put in it, so a rows-only
 	// cleanup does not litter the trash with empty batches.
 	var batch string
@@ -157,7 +160,7 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 		dest := filepath.Join(batch, p.rel)
 		// Belt and braces: the source check already rules this out, but a destination that
 		// escapes the batch folder must never be written to.
-		if err := checkContained(batch, dest); err != nil {
+		if err := utils.CheckPathContained(batch, dest); err != nil {
 			moveErr = fmt.Errorf("%w: %s", ErrUnsafeDeletion, err)
 			break
 		}
@@ -181,6 +184,15 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 			// A missing manifest makes recovery harder but does not make the delete wrong.
 			log.Warn(ctx, "Error writing trash manifest", "batch", batch, err)
 		}
+	} else if batch != "" {
+		// The very first move failed, so this batch holds no files and has no manifest.
+		// Left behind it accumulates in the trash root as a timestamped folder
+		// indistinguishable from a real deletion, which is exactly the wrong thing to hand
+		// someone trying to restore.
+		if err := removeEmptyTree(batch); err != nil {
+			log.Warn(ctx, "Error removing empty trash batch folder", "batch", batch, err)
+		}
+		batch = ""
 	}
 
 	affectedAlbumIDs := albumIDsOf(mfs, deleted)
@@ -202,6 +214,10 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 		if err != nil {
 			log.Error(ctx, "Error deleting media files from DB after moving them to trash",
 				"ids", deleted, "batch", batch, err)
+			if batch == "" {
+				// Nothing was moved - these were rows for files already gone from disk.
+				return nil, fmt.Errorf("the media files could not be removed from the library: %w", err)
+			}
 			return nil, fmt.Errorf("the files were moved to %s but their entries could not be removed: %w", batch, err)
 		}
 
@@ -290,11 +306,11 @@ func resolveLibraryFile(mf model.MediaFile) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	target, err := filepath.Abs(filepath.Join(mf.LibraryPath, mf.Path))
+	target, err := filepath.Abs(mf.AbsolutePath())
 	if err != nil {
 		return "", err
 	}
-	if err := checkContained(root, target); err != nil {
+	if err := utils.CheckPathContained(root, target); err != nil {
 		return "", err
 	}
 
@@ -323,23 +339,11 @@ func resolveLibraryFile(mf model.MediaFile) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolving %q: %w", mf.Path, err)
 	}
-	if err := checkContained(resolvedRoot, resolvedTarget); err != nil {
+	if err := utils.CheckPathContained(resolvedRoot, resolvedTarget); err != nil {
 		return "", fmt.Errorf("resolved path escapes the library: %w", err)
 	}
 
 	return target, nil
-}
-
-// checkContained fails unless child is root itself or sits somewhere beneath it.
-func checkContained(root, child string) error {
-	rel, err := filepath.Rel(root, child)
-	if err != nil {
-		return err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("path %q is outside %q", child, root)
-	}
-	return nil
 }
 
 // checkTrashOutsideLibrary refuses to run when the trash folder sits inside a music
@@ -356,15 +360,15 @@ func checkTrashOutsideLibrary(trashRoot, libraryPath string) error {
 		return err
 	}
 
-	inside := checkContained(libRoot, trashRoot) == nil
+	inside := utils.CheckPathContained(libRoot, trashRoot) == nil
 	if !inside {
 		// Only compare resolved forms when both actually resolve; a trash folder that does
 		// not exist yet is normal on a first delete.
 		if resolvedLib, err := filepath.EvalSymlinks(libRoot); err == nil {
 			if resolvedTrash, err := filepath.EvalSymlinks(trashRoot); err == nil {
-				inside = checkContained(resolvedLib, resolvedTrash) == nil
+				inside = utils.CheckPathContained(resolvedLib, resolvedTrash) == nil
 			} else if resolvedTrash, err := filepath.EvalSymlinks(filepath.Dir(trashRoot)); err == nil {
-				inside = checkContained(resolvedLib, filepath.Join(resolvedTrash, filepath.Base(trashRoot))) == nil
+				inside = utils.CheckPathContained(resolvedLib, filepath.Join(resolvedTrash, filepath.Base(trashRoot))) == nil
 			}
 		}
 	}
@@ -374,6 +378,109 @@ func checkTrashOutsideLibrary(trashRoot, libraryPath string) error {
 			ErrUnsafeDeletion, trashRoot, libRoot)
 	}
 	return nil
+}
+
+// plannedMove is one validated file waiting to be moved into the trash batch.
+type plannedMove struct {
+	mf  model.MediaFile
+	src string
+	rel string
+}
+
+// Indirected so tests can stand in for a full, cross-device trash volume. Neither a
+// nearly-full filesystem nor a second device can be staged inside a unit test, and the
+// alternative - writing multi-gigabyte files - is not a test anyone should run.
+var (
+	fsFreeBytes = fsFreeBytesOf
+	fsDeviceID  = fsDeviceIDOf
+)
+
+// trashFreeSpaceMargin is the headroom checkTrashCapacity insists on leaving free after
+// a delete. The trash defaults to <DataFolder>/trash, and that volume also holds
+// navidrome.db, its WAL and the artwork cache - running it to the last byte breaks every
+// subsequent write even when the copy itself succeeds. 64 MiB is enough for a WAL
+// checkpoint and small enough that a normal delete on a modest server is never refused;
+// the 5% added on top of it covers per-file block rounding on the destination.
+const trashFreeSpaceMargin = 64 << 20
+
+// checkTrashCapacity refuses, before anything moves, a delete that would not fit in the
+// trash.
+//
+// The trash lives under DataFolder, which in the standard Docker layout is a different -
+// and much smaller - volume than the music folder. os.Rename then fails with EXDEV and
+// moveFile streams the whole file across instead, so deleting a large album can fill the
+// volume holding the database and take the server down with it. ErrUnsafeDeletion is the
+// right refusal here precisely because it means "nothing has been moved".
+//
+// Only files that would really be copied are counted: a same-device move is a rename and
+// costs no space at all, and refusing it would break the very common single-volume
+// install (where deleting is often exactly how the admin is trying to free space).
+func checkTrashCapacity(ctx context.Context, trashRoot string, planned []plannedMove) error {
+	if len(planned) == 0 {
+		return nil
+	}
+	// The trash folder itself is only created on the first delete, so measure the nearest
+	// parent that does exist - it is on the same filesystem by definition.
+	base := nearestExistingDir(trashRoot)
+	if base == "" {
+		return nil
+	}
+	trashDev, err := fsDeviceID(base)
+	if err != nil {
+		// No statfs on this platform, or the folder moved under us. This is a safety net,
+		// not a gate: skipping it restores the previous behaviour, refusing would break
+		// every delete.
+		log.Debug(ctx, "Could not identify the trash filesystem, skipping the free space check",
+			"trash", base, err)
+		return nil
+	}
+
+	var needed uint64
+	for _, p := range planned {
+		if p.mf.Size <= 0 {
+			continue
+		}
+		dev, err := fsDeviceID(p.src)
+		if err != nil || dev == trashDev {
+			// Same device, so this one is a rename. An error here means the move will fail
+			// on its own terms; do not turn it into a capacity refusal.
+			continue
+		}
+		needed += uint64(p.mf.Size)
+	}
+	if needed == 0 {
+		return nil
+	}
+
+	free, err := fsFreeBytes(base)
+	if err != nil {
+		log.Warn(ctx, "Could not read free space on the trash filesystem, skipping the check",
+			"trash", base, err)
+		return nil
+	}
+
+	margin := max(needed/20, uint64(trashFreeSpaceMargin))
+	if free < needed+margin {
+		return fmt.Errorf("%w: moving these files to the trash would copy %s onto %s, which has only %s free (%s must stay free for the database)",
+			ErrUnsafeDeletion, humanize.IBytes(needed), base, humanize.IBytes(free), humanize.IBytes(margin))
+	}
+	return nil
+}
+
+// nearestExistingDir walks up from path to the first directory that already exists,
+// since the trash folder is only created on the first delete. Returns "" if nothing on
+// the way up is a directory, which on a sane system cannot happen.
+func nearestExistingDir(path string) string {
+	for {
+		if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+			return path
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return ""
+		}
+		path = parent
+	}
 }
 
 func trashRoot() (string, error) {
@@ -406,6 +513,32 @@ func newTrashBatch(trashRoot string) (string, error) {
 		}
 	}
 	return "", errors.New("could not create a unique trash batch folder")
+}
+
+// removeEmptyTree deletes dir and every directory below it, and nothing else.
+//
+// A batch that failed on its first file is not one empty folder but a nest of them:
+// moveFile creates the destination's parent folders before it attempts the move, so
+// os.Remove(batch) alone would always fail with ENOTEMPTY and leave the batch behind.
+// Every removal here is still a plain os.Remove, which on a directory only succeeds when
+// it is empty - one stray file, or anything that is not a directory, stops the prune and
+// keeps the whole batch. It is structurally incapable of deleting a file.
+func removeEmptyTree(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		// IsDir is false for a symlink to a directory, which is what we want: never
+		// descend through one.
+		if !e.IsDir() {
+			return fmt.Errorf("%q is not empty", dir)
+		}
+		if err := removeEmptyTree(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return os.Remove(dir)
 }
 
 type trashEntry struct {
@@ -445,8 +578,17 @@ func moveFile(src, dest string) error {
 		return err
 	}
 
-	if err := os.Rename(src, dest); err == nil {
+	err := os.Rename(src, dest)
+	if err == nil {
 		return nil
+	}
+	// Only a genuine cross-device rename earns the copy fallback. Falling back on *any*
+	// error retried a permission problem, a busy file or a source that vanished under us
+	// as a second, weaker attempt at the same move - and that second attempt is the one
+	// that reads through symlinks. EXDEV arrives wrapped in an *os.LinkError, which
+	// errors.Is unwraps.
+	if !errors.Is(err, syscall.EXDEV) {
+		return err
 	}
 
 	if err := copyFile(src, dest); err != nil {
@@ -462,8 +604,16 @@ func moveFile(src, dest string) error {
 	return nil
 }
 
+// copyFile copies src to dest without following a symlink at src.
+//
+// resolveLibraryFile already rejects symlinks, but that check and this copy are separated
+// by the rest of the planning loop. Anyone with write access to the music folder can use
+// that window to swap a track for a link to a file the server can read - navidrome.db, a
+// mounted secret - and, since the trash is normally on another device, the copy path is
+// the one that runs. O_NOFOLLOW closes the window at open time, and the mode is then
+// re-checked on the open handle, which is the only form of the check that cannot be raced.
 func copyFile(src, dest string) error {
-	in, err := os.Open(src)
+	in, err := os.OpenFile(src, os.O_RDONLY|openNoFollow, 0)
 	if err != nil {
 		return err
 	}
@@ -472,6 +622,9 @@ func copyFile(src, dest string) error {
 	info, err := in.Stat()
 	if err != nil {
 		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", src)
 	}
 
 	// O_EXCL so a racing writer cannot make us overwrite something.

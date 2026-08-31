@@ -106,6 +106,7 @@ func (api *Router) routes() http.Handler {
 			api.addUserLibraryRoute(r)
 			api.addPluginRoute(r)
 			api.addMetadataRoute(r)
+			api.addDeletionRoute(r)
 			api.RX(r, "/library", api.libs.NewRepository, true)
 		})
 	})

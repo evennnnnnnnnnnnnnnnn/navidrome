@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -39,4 +40,22 @@ func CleanFileName(name string) string {
 func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil || !os.IsNotExist(err)
+}
+
+// CheckPathContained fails unless child is root itself or sits somewhere beneath it.
+//
+// This is the single implementation of the "never leave the library folder" boundary:
+// both the lyrics sidecar writer and the media file deleter call it, so a hardening
+// applied here cannot land on one path and miss the other. The comparison is purely
+// lexical, so callers that also care about symlinks must resolve both sides themselves
+// and check again.
+func CheckPathContained(root, child string) error {
+	rel, err := filepath.Rel(root, child)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path %q is outside %q", child, root)
+	}
+	return nil
 }

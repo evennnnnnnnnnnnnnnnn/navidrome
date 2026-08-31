@@ -51,7 +51,8 @@
         "download": "Download",
         "playNext": "Play Next",
         "info": "Get Info",
-        "instantMix": "Instant Mix"
+        "instantMix": "Instant Mix",
+        "deleteFromLibrary": "Delete from Library"
       }
     },
     "album": {
@@ -94,7 +95,8 @@
         "addToPlaylist": "Add to Playlist",
         "download": "Download",
         "info": "Get Info",
-        "refresh": "Refresh Metadata"
+        "refresh": "Refresh Metadata",
+        "deleteFromLibrary": "Delete from Library"
       },
       "lists": {
         "all": "All",
@@ -602,6 +604,12 @@
     "remove_missing_content": "Are you sure you want to remove the selected missing files from the database? This will remove permanently any references to them, including their play counts and ratings.",
     "remove_all_missing_title": "Remove all missing files",
     "remove_all_missing_content": "Are you sure you want to remove all missing files from the database? This will permanently remove any references to them, including their play counts and ratings.",
+    "deleteFromLibrarySongTitle": "Delete song from library",
+    "deleteFromLibrarySongContent": "This moves the audio file out of your music folder into the server's trash folder and removes it from the database, along with its play counts and ratings. It is also removed from every playlist it belongs to. It will not be restored by a rescan.",
+    "deleteFromLibraryAlbumTitle": "Delete album from library",
+    "deleteFromLibraryAlbumContent": "This moves every track of this album out of your music folder into the server's trash folder and removes them from the database, along with their play counts and ratings. They are also removed from every playlist they belong to. They will not be restored by a rescan.",
+    "deleteFromLibrarySuccess": "Moved %{smart_count} file to the server's trash |||| Moved %{smart_count} files to the server's trash",
+    "deleteFromLibraryError": "Could not delete from the library: %{error}",
     "notifications_blocked": "You have blocked Notifications for this site in your browser's settings",
     "notifications_not_available": "This browser does not support desktop notifications or you are not accessing Navidrome over https",
     "lastfmLinkSuccess": "Last.fm successfully linked and scrobbling enabled",

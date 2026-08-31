@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import PropTypes from 'prop-types'
 import { useDispatch } from 'react-redux'
 import {
+  Confirm,
   useNotify,
   usePermissions,
   useTranslate,
@@ -25,6 +26,7 @@ import {
 import { LoveButton } from './LoveButton'
 import config from '../config'
 import { playSimilar } from './playbackActions.js'
+import { useDeleteFromLibrary } from './useDeleteFromLibrary'
 import { formatBytes } from '../utils'
 import { useRedirect } from 'react-admin'
 
@@ -70,6 +72,7 @@ export const SongContextMenu = ({
   const [playlistsLoaded, setPlaylistsLoaded] = useState(false)
   const { permissions } = usePermissions()
   const redirect = useRedirect()
+  const deleteFromLibrary = useDeleteFromLibrary('song')
 
   const options = {
     playNow: {
@@ -167,6 +170,13 @@ export const SongContextMenu = ({
 
         dispatch(openExtendedInfoDialog(fullRecord))
       },
+    },
+    // Destructive, so it goes last and always behind a confirmation.
+    deleteFromLibrary: {
+      enabled: deleteFromLibrary.enabled,
+      label: translate('resources.song.actions.deleteFromLibrary'),
+      action: (record) =>
+        deleteFromLibrary.requestDelete([record.mediaFileId ?? record.id]),
     },
   }
 
@@ -295,6 +305,14 @@ export const SongContextMenu = ({
           </MenuItem>
         ))}
       </Menu>
+      <Confirm
+        isOpen={deleteFromLibrary.isOpen}
+        loading={deleteFromLibrary.loading}
+        title={'message.deleteFromLibrarySongTitle'}
+        content={'message.deleteFromLibrarySongContent'}
+        onConfirm={deleteFromLibrary.confirm}
+        onClose={deleteFromLibrary.cancel}
+      />
     </span>
   )
 }

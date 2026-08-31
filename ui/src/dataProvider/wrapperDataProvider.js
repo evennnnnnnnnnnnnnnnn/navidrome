@@ -229,6 +229,19 @@ const wrapperDataProvider = {
     httpClient(`${REST_URL}/metadata/${REFRESH_KIND[resource]}/${id}/refresh`, {
       method: 'POST',
     }).then(() => ({ data: { id } })),
+  // Moves the underlying files to the server's trash folder and drops their rows. Admin
+  // only, and only when the server has Deletion.Enabled set. `kind` is 'song' or 'album'.
+  // An empty id list is refused client-side too: the endpoint has no "delete all" mode and
+  // an accidental bare request must not look like one.
+  deleteFromLibrary: (kind, ids) => {
+    if (!ids || ids.length === 0) {
+      return Promise.reject(new Error('No ids given'))
+    }
+    const query = ids.map((id) => `id=${encodeURIComponent(id)}`).join('&')
+    return httpClient(`${REST_URL}/deletion/${kind}?${query}`, {
+      method: 'DELETE',
+    }).then(({ json }) => ({ data: json }))
+  },
 }
 
 export default wrapperDataProvider

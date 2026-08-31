@@ -78,6 +78,7 @@ func serveIndex(ds model.DataStore, fs fs.FS, shareInfo *model.Share) http.Handl
 			"defaultDownsamplingFormat": conf.Server.DefaultDownsamplingFormat,
 			"separator":                 string(os.PathSeparator),
 			"enableInspect":             conf.Server.Inspect.Enabled,
+			"enableDeletion":            conf.Server.Deletion.Enabled,
 			"pluginsEnabled":            conf.Server.Plugins.Enabled,
 			"extAuthLogoutURL":          conf.Server.ExtAuth.LogoutURL,
 		}

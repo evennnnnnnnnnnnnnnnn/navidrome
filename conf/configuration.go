@@ -120,6 +120,7 @@ type configOptions struct {
 	Backup                          backupOptions       `json:",omitzero"`
 	PID                             pidOptions          `json:",omitzero"`
 	Inspect                         inspectOptions      `json:",omitzero"`
+	Deletion                        deletionOptions     `json:",omitzero"`
 	Subsonic                        subsonicOptions     `json:",omitzero"`
 	Transcoding                     transcodingOptions  `json:",omitzero"`
 	LastFM                          lastfmOptions       `json:",omitzero"`
@@ -278,6 +279,17 @@ type inspectOptions struct {
 	BacklogTimeout int
 }
 
+// deletionOptions controls the admin-only "delete from library" feature, which removes
+// media files from the music folder. It is off by default: the whole point of the flag is
+// that a server has to opt in before any request can unlink a file the scanner found.
+type deletionOptions struct {
+	Enabled bool
+	// TrashFolder is where deleted files are moved to. Empty means <DataFolder>/trash.
+	// It must never sit inside a music folder, or the scanner would just re-import the
+	// files we deleted.
+	TrashFolder string
+}
+
 type pluginsOptions struct {
 	Enabled    bool
 	Folder     Dir
@@ -382,6 +394,10 @@ func Load(noConfigDump bool) {
 		} else {
 			Server.Plugins.Folder = NewDirWithPerm(Server.Plugins.Folder.String(), 0700)
 		}
+	}
+
+	if Server.Deletion.TrashFolder == "" {
+		Server.Deletion.TrashFolder = filepath.Join(Server.DataFolder.String(), consts.DefaultTrashFolder)
 	}
 
 	Server.ConfigFile = viper.GetViper().ConfigFileUsed()
@@ -1067,6 +1083,9 @@ func setViperDefaults() {
 	viper.SetDefault("backup.count", 0)
 	viper.SetDefault("pid.track", consts.DefaultTrackPID)
 	viper.SetDefault("pid.album", consts.DefaultAlbumPID)
+	viper.SetDefault("deletion.enabled", false)
+	viper.SetDefault("deletion.trashfolder", "")
+
 	viper.SetDefault("inspect.enabled", true)
 	viper.SetDefault("inspect.maxrequests", 1)
 	viper.SetDefault("inspect.backloglimit", consts.RequestThrottleBacklogLimit)

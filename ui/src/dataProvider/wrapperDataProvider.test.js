@@ -120,4 +120,60 @@ describe('wrapperDataProvider', () => {
       ).resolves.toEqual({ data: { id: 'al-1' } })
     })
   })
+  describe('deleteFromLibrary', () => {
+    it('sends every id as a repeated query param', async () => {
+      mockHttpClient.mockResolvedValue({
+        json: { ids: ['mf1', 'mf2'], count: 2 },
+      })
+
+      await wrapperDataProvider.deleteFromLibrary('song', ['mf1', 'mf2'])
+
+      expect(mockHttpClient).toHaveBeenCalledWith(
+        '/api/deletion/song?id=mf1&id=mf2',
+        { method: 'DELETE' },
+      )
+    })
+
+    it('targets the album endpoint for albums', async () => {
+      mockHttpClient.mockResolvedValue({ json: { ids: ['al1'], count: 3 } })
+
+      const result = await wrapperDataProvider.deleteFromLibrary('album', [
+        'al1',
+      ])
+
+      expect(mockHttpClient).toHaveBeenCalledWith(
+        '/api/deletion/album?id=al1',
+        {
+          method: 'DELETE',
+        },
+      )
+      expect(result).toEqual({ data: { ids: ['al1'], count: 3 } })
+    })
+
+    it('encodes ids that need it', async () => {
+      mockHttpClient.mockResolvedValue({ json: {} })
+
+      await wrapperDataProvider.deleteFromLibrary('song', ['a b&c'])
+
+      expect(mockHttpClient).toHaveBeenCalledWith(
+        '/api/deletion/song?id=a%20b%26c',
+        { method: 'DELETE' },
+      )
+    })
+
+    // The endpoint has no "delete all" mode; a bare request must not look like one.
+    it('refuses an empty id list without calling the server', async () => {
+      await expect(
+        wrapperDataProvider.deleteFromLibrary('song', []),
+      ).rejects.toThrow('No ids given')
+      expect(mockHttpClient).not.toHaveBeenCalled()
+    })
+
+    it('refuses a missing id list without calling the server', async () => {
+      await expect(
+        wrapperDataProvider.deleteFromLibrary('song', undefined),
+      ).rejects.toThrow('No ids given')
+      expect(mockHttpClient).not.toHaveBeenCalled()
+    })
+  })
 })

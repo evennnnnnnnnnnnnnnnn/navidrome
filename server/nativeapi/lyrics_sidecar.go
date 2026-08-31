@@ -13,6 +13,7 @@ import (
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/server"
+	"github.com/navidrome/navidrome/utils"
 )
 
 // addLyricsSidecarRoute registers the endpoint that writes a .lrc sidecar next
@@ -38,7 +39,7 @@ func sidecarPathFor(mf *model.MediaFile) (string, error) {
 		return "", errors.New("media file has no library path")
 	}
 
-	absolute := filepath.Join(mf.LibraryPath, mf.Path)
+	absolute := mf.AbsolutePath()
 	ext := filepath.Ext(absolute)
 	sidecar := strings.TrimSuffix(absolute, ext) + ".lrc"
 
@@ -50,12 +51,10 @@ func sidecarPathFor(mf *model.MediaFile) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rel, err := filepath.Rel(root, resolved)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("sidecar path escapes the library: %s", rel)
+	// Shared with the media file deleter, so this boundary has one implementation and a
+	// future hardening cannot land on only one of them.
+	if err := utils.CheckPathContained(root, resolved); err != nil {
+		return "", fmt.Errorf("sidecar path escapes the library: %w", err)
 	}
 
 	return resolved, nil

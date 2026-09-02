@@ -6,7 +6,9 @@ import (
 )
 
 var _ = Describe("user edit", func() {
-	It("validates a new password against the replacement email", func() {
+	It("selects the prospective email for password validation", func() {
 		Expect(prospectiveEmail("old@example.com", "new@example.com", false)).To(Equal("new@example.com"))
+		Expect(prospectiveEmail("old@example.com", "", true)).To(BeEmpty())
+		Expect(prospectiveEmail("old@example.com", "", false)).To(Equal("old@example.com"))
 	})
 })

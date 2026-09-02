@@ -48,5 +48,6 @@ var _ = Describe("initial_setup", func() {
 		Expect(hook.LastEntry()).ToNot(BeNil())
 		Expect(hook.LastEntry().Level).To(Equal(logrus.ErrorLevel))
 		Expect(hook.LastEntry().Message).To(Equal("Initial setup failed"))
+		Expect(hook.LastEntry().Data["error"]).To(ContainSubstring("must be strong"))
 	})
 })

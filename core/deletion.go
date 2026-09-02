@@ -244,7 +244,7 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 
 	if moveErr != nil {
 		result := DeletionResult{DeletedIDs: deleted, TrashFolder: batch, Count: len(deleted)}
-		return &result, &PartialDeletionError{Result: result, Err: moveErr}
+		return nil, &PartialDeletionError{Result: result, Err: moveErr}
 	}
 
 	log.Info(ctx, "Deleted media files", "count", len(deleted), "trash", batch)

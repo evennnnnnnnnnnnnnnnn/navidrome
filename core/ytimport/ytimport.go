@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -92,12 +93,21 @@ func (i *importer) Import(ctx context.Context, rawURL string, libraryID int) (*R
 		return nil, fmt.Errorf("creating destination folder: %w", err)
 	}
 
-	result, err := i.downloadAudio(ctx, rawURL, destination)
+	staging, err := os.MkdirTemp("", "navidrome-ytimport-")
+	if err != nil {
+		return nil, fmt.Errorf("creating staging folder: %w", err)
+	}
+	defer os.RemoveAll(staging)
+
+	result, err := i.downloadAudio(ctx, rawURL, staging)
 	if err != nil {
 		return nil, err
 	}
 
 	i.fetchLyrics(ctx, result)
+	if err := publish(result, destination); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -119,7 +129,8 @@ func (i *importer) downloadAudio(ctx context.Context, rawURL, destination string
 		"--audio-quality", "192K",
 		"--embed-metadata",
 		"--embed-thumbnail",
-		"--output", filepath.Join(destination, "%(title)s.%(ext)s"),
+		"--no-overwrites",
+		"--output", filepath.Join(destination, "%(title)s [%(id)s].%(ext)s"),
 		"--no-simulate",
 		"--quiet",
 		"--print", printTemplate,
@@ -157,6 +168,52 @@ func (i *importer) downloadAudio(ctx context.Context, rawURL, destination string
 		}, nil
 	}
 	return nil, fmt.Errorf("unexpected yt-dlp output: %q", stdout)
+}
+
+func publish(result *Result, destination string) error {
+	sources := []string{result.Path}
+	sidecar := strings.TrimSuffix(result.Path, filepath.Ext(result.Path)) + ".lrc"
+	if _, err := os.Stat(sidecar); err == nil {
+		sources = append(sources, sidecar)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("checking staged lyrics: %w", err)
+	}
+
+	var published []string
+	for _, src := range sources {
+		dst := filepath.Join(destination, filepath.Base(src))
+		if err := publishFile(src, dst); err != nil {
+			for _, path := range published {
+				_ = os.Remove(path)
+			}
+			return fmt.Errorf("publishing %q: %w", filepath.Base(src), err)
+		}
+		published = append(published, dst)
+	}
+	result.Path = published[0]
+	return nil
+}
+
+func publishFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err == nil {
+		err = out.Close()
+	} else {
+		_ = out.Close()
+	}
+	if err != nil {
+		_ = os.Remove(dst)
+	}
+	return err
 }
 
 // fetchLyrics queries LRCLIB for the downloaded track and writes a .lrc

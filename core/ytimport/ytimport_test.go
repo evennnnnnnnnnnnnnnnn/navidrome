@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/tests"
@@ -33,14 +34,18 @@ var _ = Describe("Importer", func() {
 	})
 
 	stubDownload := func(mp3Name string) string {
-		mp3Path := filepath.Join(libPath, Subfolder, mp3Name)
-		imp.run = func(_ context.Context, _ ...string) (string, string, error) {
+		finalPath := filepath.Join(libPath, Subfolder, mp3Name)
+		imp.run = func(_ context.Context, args ...string) (string, string, error) {
+			output := args[slices.Index(args, "--output")+1]
+			Expect(args).To(ContainElement("--no-overwrites"))
+			Expect(output).To(ContainSubstring("%(id)s"))
+			mp3Path := filepath.Join(filepath.Dir(output), mp3Name)
 			Expect(os.MkdirAll(filepath.Dir(mp3Path), 0o755)).To(Succeed())
 			Expect(os.WriteFile(mp3Path, []byte("mp3"), 0o644)).To(Succeed())
 			out := mp3Path + separator + "Song Title" + separator + "The Artist" + separator + "213.5\n"
 			return out, "", nil
 		}
-		return mp3Path
+		return finalPath
 	}
 
 	newLrclibServer := func(status int, body string) *httptest.Server {
@@ -78,6 +83,22 @@ var _ = Describe("Importer", func() {
 		var dlErr *DownloadFailedError
 		Expect(errors.As(err, &dlErr)).To(BeTrue())
 		Expect(dlErr.Detail).To(Equal("ERROR: [youtube] video unavailable"))
+		entries, readErr := os.ReadDir(filepath.Join(libPath, Subfolder))
+		Expect(readErr).ToNot(HaveOccurred())
+		Expect(entries).To(BeEmpty())
+	})
+
+	It("keeps videos with the same title and different ids", func() {
+		firstPath := stubDownload("Same title [one].mp3")
+		newLrclibServer(http.StatusNotFound, "")
+		_, err := imp.Import(ctx, "https://www.youtube.com/watch?v=one", 1)
+		Expect(err).ToNot(HaveOccurred())
+
+		secondPath := stubDownload("Same title [two].mp3")
+		_, err = imp.Import(ctx, "https://www.youtube.com/watch?v=two", 1)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(firstPath).To(BeAnExistingFile())
+		Expect(secondPath).To(BeAnExistingFile())
 	})
 
 	It("parses the yt-dlp print output and rounds the duration", func() {

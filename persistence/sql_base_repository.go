@@ -54,6 +54,8 @@ type sqlRepository struct {
 	sortMappings map[string]string
 }
 
+// cardOwnedRepository leaves headless contexts unrestricted; otherwise it scopes
+// every user, including admins, to their own cards.
 type cardOwnedRepository struct {
 	sqlRepository
 }

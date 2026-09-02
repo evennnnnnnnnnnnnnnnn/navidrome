@@ -103,10 +103,23 @@ jobs:
             - name: Verify yt-dlp accepts the bundled JS runtime
               run: |
                   IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.version.outputs.git_sha }}"
+                  set +e
                   OUT=$(docker run --rm --entrypoint yt-dlp "$IMAGE" \
                           -v --js-runtimes deno --js-runtimes node --simulate --quiet \
-                          --print "%(title)s" -- "https://www.youtube.com/watch?v=dQw4w9WgXcQ" 2>&1 || true)
+                          --print "TITLE:%(title)s" -- "https://www.youtube.com/watch?v=dQw4w9WgXcQ" 2>&1)
+                  STATUS=$?
+                  set -e
+                  echo "$OUT"
                   echo "$OUT" | grep -E "JS runtimes|Challenge Providers" || true
+                  if [ "$STATUS" -ne 0 ]; then
+                    echo "::error::yt-dlp smoke test exited with status $STATUS."
+                    exit 1
+                  fi
+                  TITLE=$(printf '%s\n' "$OUT" | sed -n 's/^TITLE://p' | tail -1)
+                  if [ -z "$TITLE" ]; then
+                    echo "::error::yt-dlp smoke test returned no title."
+                    exit 1
+                  fi
                   if echo "$OUT" | grep -q "No supported JavaScript runtime"; then
                     echo "::error::yt-dlp found no usable JS runtime. YouTube import will degrade."
                     echo "$OUT" | tail -30

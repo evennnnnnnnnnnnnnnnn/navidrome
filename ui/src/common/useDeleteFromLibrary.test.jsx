@@ -116,7 +116,7 @@ describe('useDeleteFromLibrary', () => {
       expect(result.current.isOpen).toBe(false)
     })
 
-    it('warns and does not refresh when the request fails', async () => {
+    it('warns and refreshes when the request fails', async () => {
       mockDeleteFromLibrary.mockRejectedValue(new Error('boom'))
       const { result } = renderHook(() => useDeleteFromLibrary('song'))
 
@@ -134,7 +134,7 @@ describe('useDeleteFromLibrary', () => {
           messageArgs: { error: 'boom' },
         },
       )
-      expect(mockRefresh).not.toHaveBeenCalled()
+      expect(mockRefresh).toHaveBeenCalled()
       expect(result.current.isOpen).toBe(false)
     })
   })

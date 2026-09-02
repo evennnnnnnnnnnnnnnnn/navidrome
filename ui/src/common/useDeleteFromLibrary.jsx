@@ -56,7 +56,6 @@ export const useDeleteFromLibrary = (kind) => {
         type: 'info',
         messageArgs: { smart_count: data?.count ?? pendingIds.length },
       })
-      refresh()
     } catch (error) {
       // The endpoint answers with {"message": "..."} explaining the refusal (feature off,
       // unsafe path, partial batch). react-admin surfaces that as error.message.
@@ -67,6 +66,7 @@ export const useDeleteFromLibrary = (kind) => {
         messageArgs: { error: error?.message || '' },
       })
     } finally {
+      refresh()
       if (mounted.current) {
         setLoading(false)
         setPendingIds(null)

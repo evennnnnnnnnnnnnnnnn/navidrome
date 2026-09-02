@@ -142,6 +142,25 @@ var _ = Describe("Deletion API", func() {
 		})
 	})
 
+	It("returns partial deletion details", func() {
+		maintenance.returnErr = &core.PartialDeletionError{
+			Result: core.DeletionResult{DeletedIDs: []string{"mf1"}, Count: 1, TrashFolder: "/data/trash/partial"},
+			Err:    fmt.Errorf("second move failed"),
+		}
+		w := send("/deletion/song?id=mf1&id=mf2", adminToken)
+		Expect(w.Code).To(Equal(http.StatusInternalServerError))
+
+		var body struct {
+			core.DeletionResult
+			Message string `json:"message"`
+		}
+		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
+		Expect(body.DeletedIDs).To(ConsistOf("mf1"))
+		Expect(body.Count).To(Equal(1))
+		Expect(body.TrashFolder).To(Equal("/data/trash/partial"))
+		Expect(body.Message).To(ContainSubstring("second move failed"))
+	})
+
 	DescribeTable("error mapping",
 		func(err error, expected int) {
 			maintenance.returnErr = err

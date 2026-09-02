@@ -505,8 +505,13 @@ var _ = Describe("Deletion", func() {
 			// "good" sorts first, so it is moved before the failure aborts the batch.
 			repo.SetData(model.MediaFiles{good, victim})
 
-			_, err := service.DeleteMediaFiles(ctx, []string{"good", "stuck"})
+			result, err := service.DeleteMediaFiles(ctx, []string{"good", "stuck"})
 			Expect(err).To(HaveOccurred())
+			var partial *PartialDeletionError
+			Expect(errors.As(err, &partial)).To(BeTrue())
+			Expect(result).To(Equal(&partial.Result))
+			Expect(partial.Result.DeletedIDs).To(ConsistOf("good"))
+			Expect(partial.Result.TrashFolder).ToNot(BeEmpty())
 
 			entries, err := os.ReadDir(trash)
 			Expect(err).ToNot(HaveOccurred())

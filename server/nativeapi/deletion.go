@@ -60,6 +60,7 @@ func deletionHandler(kind string, delete func(*http.Request, []string) (*core.De
 
 func writeDeletionError(w http.ResponseWriter, r *http.Request, kind string, ids []string, err error) {
 	ctx := r.Context()
+	var partial *core.PartialDeletionError
 	switch {
 	case errors.Is(err, core.ErrNoIDs):
 		writeError(w, ctx, http.StatusBadRequest, "no ids given")
@@ -69,14 +70,21 @@ func writeDeletionError(w http.ResponseWriter, r *http.Request, kind string, ids
 		writeError(w, ctx, http.StatusForbidden, "Access denied: admin privileges required")
 	case errors.Is(err, model.ErrNotFound):
 		writeError(w, ctx, http.StatusNotFound, "not found")
+	case errors.As(err, &partial):
+		log.Error(ctx, "Partially deleted from library", "kind", kind, "ids", ids, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		if encodeErr := json.NewEncoder(w).Encode(struct {
+			core.DeletionResult
+			Message string `json:"message"`
+		}{DeletionResult: partial.Result, Message: err.Error()}); encodeErr != nil {
+			log.Error(ctx, "Error encoding partial deletion response", encodeErr)
+		}
 	case errors.Is(err, core.ErrUnsafeDeletion):
 		// Nothing was moved: the request named a path the server will not touch.
 		log.Warn(ctx, "Refused an unsafe delete request", "kind", kind, "ids", ids, err)
 		writeError(w, ctx, http.StatusBadRequest, err.Error())
 	default:
-		// Includes the partial-batch case, where some files were deleted before the run
-		// stopped. The message carries the counts and the trash folder, so say it out loud
-		// rather than hiding it behind a generic failure.
 		log.Error(ctx, "Error deleting from library", "kind", kind, "ids", ids, err)
 		writeError(w, ctx, http.StatusInternalServerError, err.Error())
 	}

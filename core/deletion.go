@@ -46,6 +46,18 @@ type DeletionResult struct {
 	Count int `json:"count"`
 }
 
+// PartialDeletionError reports the rows removed before a batch stopped.
+type PartialDeletionError struct {
+	Result DeletionResult
+	Err    error
+}
+
+func (e *PartialDeletionError) Error() string {
+	return fmt.Sprintf("deleted %d files into %s, then stopped: %v", e.Result.Count, e.Result.TrashFolder, e.Err)
+}
+
+func (e *PartialDeletionError) Unwrap() error { return e.Err }
+
 // DeleteMediaFiles moves the given media files to the trash folder and removes their rows.
 //
 // Validation happens for every file before anything is moved, so a request naming one bad
@@ -231,7 +243,8 @@ func (s *maintenanceService) deleteMediaFiles(ctx context.Context, mfs model.Med
 	}
 
 	if moveErr != nil {
-		return nil, fmt.Errorf("deleted %d of %d, then stopped: %w", len(deleted), len(mfs), moveErr)
+		result := DeletionResult{DeletedIDs: deleted, TrashFolder: batch, Count: len(deleted)}
+		return &result, &PartialDeletionError{Result: result, Err: moveErr}
 	}
 
 	log.Info(ctx, "Deleted media files", "count", len(deleted), "trash", batch)
@@ -604,14 +617,8 @@ func moveFile(src, dest string) error {
 	return nil
 }
 
-// copyFile copies src to dest without following a symlink at src.
-//
-// resolveLibraryFile already rejects symlinks, but that check and this copy are separated
-// by the rest of the planning loop. Anyone with write access to the music folder can use
-// that window to swap a track for a link to a file the server can read - navidrome.db, a
-// mounted secret - and, since the trash is normally on another device, the copy path is
-// the one that runs. O_NOFOLLOW closes the window at open time, and the mode is then
-// re-checked on the open handle, which is the only form of the check that cannot be raced.
+// copyFile opens the final source component with O_NOFOLLOW on supported Unix systems after path
+// validation. Parent directories are validated but are not pinned between validation and open.
 func copyFile(src, dest string) error {
 	in, err := os.OpenFile(src, os.O_RDONLY|openNoFollow, 0)
 	if err != nil {

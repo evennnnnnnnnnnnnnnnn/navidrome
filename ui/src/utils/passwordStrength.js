@@ -73,9 +73,12 @@ const countClasses = (runes) => {
 }
 
 // Fragments shorter than 3 characters are ignored — they match too much.
+const foldCredential = (value) =>
+  value.normalize('NFKC').toLowerCase().replace(/\p{M}/gu, '')
+
 const containsCredential = (password, credential) => {
   if (!credential || [...credential].length < 3) return false
-  return password.toLowerCase().includes(credential.toLowerCase())
+  return foldCredential(password).includes(foldCredential(credential))
 }
 
 const emailLocalPart = (email) => {

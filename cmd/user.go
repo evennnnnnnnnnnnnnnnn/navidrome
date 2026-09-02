@@ -321,7 +321,7 @@ func runUserEdit(ctx context.Context) {
 		}
 
 		if setPassword {
-			password := promptPassword(user.UserName, user.Email)
+			password := promptPassword(user.UserName, prospectiveEmail(user.Email, email, removeEmail))
 
 			if password != "" {
 				user.NewPassword = password
@@ -378,6 +378,16 @@ func runUserEdit(ctx context.Context) {
 	} else {
 		log.Info(ctx, "Updated user", "user", user.UserName, "changes", strings.Join(changes, ", "))
 	}
+}
+
+func prospectiveEmail(current, replacement string, remove bool) string {
+	if replacement != "" {
+		return replacement
+	}
+	if remove {
+		return ""
+	}
+	return current
 }
 
 type displayLibrary struct {

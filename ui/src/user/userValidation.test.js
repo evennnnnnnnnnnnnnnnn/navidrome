@@ -131,6 +131,16 @@ describe('password strength validation', () => {
       ).toContain('resources.user.passwordReason.containsEmail')
     })
 
+    it('uses the first-admin form username field', () => {
+      expect(
+        validatePasswordStrength(
+          'even-Strong-Pass-99',
+          { username: 'even' },
+          translate,
+        ),
+      ).toContain('resources.user.passwordReason.containsUsername')
+    })
+
     it('tolerates missing form values', () => {
       expect(
         validatePasswordStrength(

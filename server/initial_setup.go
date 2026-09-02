@@ -17,7 +17,7 @@ import (
 
 func initialSetup(ds model.DataStore) {
 	ctx := context.TODO()
-	_ = ds.WithTx(func(tx model.DataStore) error {
+	if err := ds.WithTx(func(tx model.DataStore) error {
 		if err := tx.Library(ctx).StoreMusicFolder(); err != nil {
 			return err
 		}
@@ -36,7 +36,9 @@ func initialSetup(ds model.DataStore) {
 
 		err = properties.Put(consts.InitialSetupFlagKey, time.Now().String())
 		return err
-	}, "initial setup")
+	}, "initial setup"); err != nil {
+		log.Error(ctx, "Initial setup failed", err)
+	}
 }
 
 // If the Dev Admin user is not present, create it

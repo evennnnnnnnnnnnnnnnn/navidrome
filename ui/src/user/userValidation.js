@@ -14,7 +14,7 @@ export const validatePasswordStrength = (password, values, translate) => {
 
   const { level, reasons } = evaluatePassword(
     password,
-    values?.userName,
+    values?.userName ?? values?.username,
     values?.email,
   )
   if (level === STRONG) return undefined

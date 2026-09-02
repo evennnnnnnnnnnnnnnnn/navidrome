@@ -3,10 +3,13 @@ package server
 import (
 	"context"
 
+	"github.com/navidrome/navidrome/conf"
+	"github.com/navidrome/navidrome/conf/configtest"
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 )
 
 var _ = Describe("initial_setup", func() {
@@ -32,5 +35,18 @@ var _ = Describe("initial_setup", func() {
 			Expect(createInitialAdminUser(ds, "Second-Horse-Battery-9")).To(BeNil())
 			Expect(ur.CountAll()).To(Equal(int64(1)))
 		})
+	})
+
+	It("logs a weak auto-created admin password as an initial setup failure", func() {
+		DeferCleanup(configtest.SetupConfig())
+		hook, cleanup := tests.LogHook()
+		DeferCleanup(cleanup)
+		conf.Server.DevAutoCreateAdminPassword = "secret"
+
+		initialSetup(ds)
+
+		Expect(hook.LastEntry()).ToNot(BeNil())
+		Expect(hook.LastEntry().Level).To(Equal(logrus.ErrorLevel))
+		Expect(hook.LastEntry().Message).To(Equal("Initial setup failed"))
 	})
 })

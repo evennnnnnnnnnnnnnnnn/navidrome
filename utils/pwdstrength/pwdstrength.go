@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Level is the strength bucket a password falls into.
@@ -222,7 +224,16 @@ func containsCredential(password, credential string) bool {
 	if len([]rune(credential)) < 3 {
 		return false
 	}
-	return strings.Contains(strings.ToLower(password), strings.ToLower(credential))
+	return strings.Contains(foldCredential(password), foldCredential(credential))
+}
+
+func foldCredential(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.M, r) {
+			return -1
+		}
+		return r
+	}, strings.ToLower(norm.NFKC.String(value)))
 }
 
 func emailLocalPart(email string) string {

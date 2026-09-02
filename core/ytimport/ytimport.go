@@ -13,9 +13,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/utils/httpclient"
 )
 
 // Subfolder of the library root that imported audio lands in, so provenance
@@ -65,7 +68,7 @@ func New(ds model.DataStore) Importer {
 	return &importer{
 		ds:            ds,
 		run:           runYtdlp,
-		httpClient:    http.DefaultClient,
+		httpClient:    httpclient.New(consts.DefaultHttpClientTimeOut),
 		lrclibBaseURL: lrclibDefaultBaseURL,
 	}
 }
@@ -277,6 +280,8 @@ func (i *importer) fetchLyrics(ctx context.Context, result *Result) {
 
 func runYtdlp(ctx context.Context, args ...string) (string, string, error) {
 	cmd := exec.CommandContext(ctx, "yt-dlp", args...) // #nosec
+	cmd.WaitDelay = 5 * time.Second
+	configureCommand(cmd)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

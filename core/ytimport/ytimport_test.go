@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/tests"
@@ -149,6 +150,24 @@ var _ = Describe("Importer", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(result.LyricsFound).To(BeFalse())
 		Expect(filepath.Join(filepath.Dir(mp3Path), "Song Title.lrc")).ToNot(BeAnExistingFile())
+	})
+
+	It("times out a stalled LRCLIB request", func() {
+		stubDownload("Song Title.mp3")
+		Expect(imp.httpClient.Timeout).To(BeNumerically(">", 0))
+		imp.httpClient = &http.Client{Timeout: 20 * time.Millisecond}
+		cancelled := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+			close(cancelled)
+		}))
+		defer srv.Close()
+		imp.lrclibBaseURL = srv.URL
+
+		result, err := imp.Import(ctx, "https://www.youtube.com/watch?v=x", 1)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.LyricsFound).To(BeFalse())
+		Eventually(cancelled).Should(BeClosed())
 	})
 
 	It("downloads into the YouTube subfolder of the library root", func() {

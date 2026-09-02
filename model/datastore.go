@@ -38,6 +38,7 @@ type DataStore interface {
 	MusicCard(ctx context.Context) MusicCardRepository
 	MusicCardSnippet(ctx context.Context) MusicCardSnippetRepository
 	MusicCardReview(ctx context.Context) MusicCardReviewRepository
+	MusicCardFolder(ctx context.Context) MusicCardFolderRepository
 	Share(ctx context.Context) ShareRepository
 	Property(ctx context.Context) PropertyRepository
 	User(ctx context.Context) UserRepository

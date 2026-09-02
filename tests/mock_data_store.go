@@ -32,6 +32,7 @@ type MockDataStore struct {
 	MockedMusicCard        model.MusicCardRepository
 	MockedMusicCardSnippet model.MusicCardSnippetRepository
 	MockedMusicCardReview  model.MusicCardReviewRepository
+	MockedMusicCardFolder  model.MusicCardFolderRepository
 	MockedPlugin           model.PluginRepository
 	MockedArtwork          model.ArtworkRepository
 	MockedArtworkQueue     model.ArtworkQueueRepository
@@ -342,6 +343,19 @@ func (db *MockDataStore) MusicCardReview(ctx context.Context) model.MusicCardRev
 	return db.MockedMusicCardReview
 }
 
+func (db *MockDataStore) MusicCardFolder(ctx context.Context) model.MusicCardFolderRepository {
+	db.repoMu.Lock()
+	defer db.repoMu.Unlock()
+	if db.MockedMusicCardFolder != nil {
+		return db.MockedMusicCardFolder
+	}
+	if db.RealDS != nil {
+		return db.RealDS.MusicCardFolder(ctx)
+	}
+	db.MockedMusicCardFolder = CreateMockMusicCardFolderRepo()
+	return db.MockedMusicCardFolder
+}
+
 func (db *MockDataStore) Plugin(ctx context.Context) model.PluginRepository {
 	db.repoMu.Lock()
 	defer db.repoMu.Unlock()
@@ -421,6 +435,8 @@ func (db *MockDataStore) Resource(ctx context.Context, m any) model.ResourceRepo
 		return db.MusicCardSnippet(ctx).(model.ResourceRepository)
 	case model.MusicCardReview, *model.MusicCardReview:
 		return db.MusicCardReview(ctx).(model.ResourceRepository)
+	case model.MusicCardFolder, *model.MusicCardFolder:
+		return db.MusicCardFolder(ctx).(model.ResourceRepository)
 	case model.Share, *model.Share:
 		return db.Share(ctx).(model.ResourceRepository)
 	case model.Genre, *model.Genre:

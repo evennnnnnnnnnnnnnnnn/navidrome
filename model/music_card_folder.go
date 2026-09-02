@@ -4,6 +4,7 @@ import "time"
 
 // MusicCardFolder is a user-owned deck of MusicCards. Membership is a join table, so a card can sit
 // in several folders.
+// Wire fields are snake_case to match the client-side schema 1:1.
 type MusicCardFolder struct {
 	ID            string    `structs:"id"             json:"id"`
 	UserID        string    `structs:"user_id"        json:"user_id"`

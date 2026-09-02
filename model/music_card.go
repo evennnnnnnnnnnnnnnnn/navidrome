@@ -6,6 +6,7 @@ import "time"
 // adjacent pair). It has no content of its own beyond the identity key - all lyric/audio content
 // lives on its MusicCardSnippet rows, so saving the same kanji run from a different song or line
 // upserts into the existing card instead of creating a duplicate.
+// Wire fields are snake_case to match the client-side schema 1:1.
 type MusicCard struct {
 	ID        string    `structs:"id"         json:"id"`
 	UserID    string    `structs:"user_id"    json:"user_id"`

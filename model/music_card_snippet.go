@@ -9,6 +9,7 @@ import "time"
 // The Word* fields snapshot the dictionary lookup key of the word containing the snippet's kanji
 // run (surface, dictionary form, kana reading, POS), never its glosses; empty means unknown, and
 // legacy snippets resolve their word lazily at render time.
+// Wire fields are snake_case to match the client-side schema 1:1.
 type MusicCardSnippet struct {
 	ID          string    `structs:"id"            json:"id"`
 	CardID      string    `structs:"card_id"       json:"card_id"`

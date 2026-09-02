@@ -122,7 +122,7 @@ func (r *musicCardFolderRepository) loadCardIDs(folders model.MusicCardFolders) 
 		From("music_card_folder_card").
 		Join("music_card_folder on music_card_folder.id = music_card_folder_card.folder_id").
 		Where(r.addVisibility(Eq{"music_card_folder_card.folder_id": ids})).
-		OrderBy("music_card_folder_card.created_at", "music_card_folder_card.card_id")
+		OrderBy("music_card_folder_card.created_at desc", "music_card_folder_card.card_id")
 	if err := r.queryAll(sel, &rows); err != nil {
 		return err
 	}

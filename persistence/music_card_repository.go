@@ -20,17 +20,13 @@ func NewMusicCardRepository(ctx context.Context, db dbx.Builder) model.MusicCard
 	r := &musicCardRepository{}
 	r.ctx = ctx
 	r.db = db
-	// Cards are private study data, not an administrable resource, so ownership scoping applies to
-	// admins too - this is what makes addRestriction/updateOwned/deleteOwned scope every logged-in
-	// caller below.
+	// Private study data uses the strict ownership contract documented on sqlRepository.
 	r.strictOwnership = true
 	r.registerModel(&model.MusicCard{}, nil)
 	return r
 }
 
-// newRestSelect returns a select scoped to the current user: ownerFilter() restricts every
-// logged-in caller, admins included, to their own rows, and is a no-op (nil) only for headless
-// contexts.
+// newRestSelect applies sqlRepository's strict ownership scope.
 func (r *musicCardRepository) newRestSelect(options ...model.QueryOptions) SelectBuilder {
 	return r.newSelect(options...).Where(r.addRestriction())
 }

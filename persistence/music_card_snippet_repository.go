@@ -69,20 +69,6 @@ func (r *musicCardSnippetRepository) Put(s *model.MusicCardSnippet) error {
 	return err
 }
 
-// classifyOwnedSnippetWriteMiss explains why an ownership-filtered write (Update/Delete) matched no
-// row: rest.ErrPermissionDenied if the row exists but its card is owned by another user, otherwise
-// rest.ErrNotFound.
-func (r *musicCardSnippetRepository) classifyOwnedSnippetWriteMiss(id string) error {
-	exists, err := r.exists(Eq{"id": id})
-	if err != nil {
-		return err
-	}
-	if exists {
-		return rest.ErrPermissionDenied
-	}
-	return rest.ErrNotFound
-}
-
 // Delete performs an atomic, ownership-restricted delete: the card-ownership predicate is part of
 // the DELETE's WHERE clause, so a snippet whose card is owned by another user simply does not
 // match and is left untouched.
@@ -96,7 +82,7 @@ func (r *musicCardSnippetRepository) Delete(id string) error {
 		return err
 	}
 	if count == 0 {
-		return r.classifyOwnedSnippetWriteMiss(id)
+		return r.classifyOwnedWriteMiss(id)
 	}
 	return nil
 }
@@ -157,7 +143,7 @@ func (r *musicCardSnippetRepository) Update(id string, entity any, cols ...strin
 		return err
 	}
 	if count == 0 {
-		return r.classifyOwnedSnippetWriteMiss(id)
+		return r.classifyOwnedWriteMiss(id)
 	}
 	return nil
 }

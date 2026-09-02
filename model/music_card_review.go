@@ -48,6 +48,7 @@ const (
 // MusicCardReview is the per-card SRS scheduling state. One row per card (unique card_id); it has
 // no user_id column of its own - ownership is transitive through CardID, exactly like
 // MusicCardSnippet. A card with no review row is "new": the row is created by the first grade.
+// Wire fields are snake_case to match the client-side schema 1:1.
 type MusicCardReview struct {
 	ID              string    `structs:"id"               json:"id"`
 	CardID          string    `structs:"card_id"          json:"card_id"`

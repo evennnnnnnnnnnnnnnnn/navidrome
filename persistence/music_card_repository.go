@@ -90,14 +90,22 @@ func (r *musicCardRepository) Put(mc *model.MusicCard) error {
 	if err != nil && !errors.Is(err, model.ErrNotFound) {
 		return err
 	}
-	if existingID != "" {
-		mc.ID = existingID
-	} else {
+	isNew := existingID == ""
+	if isNew {
 		mc.CreatedAt = mc.UpdatedAt
 		mc.ID = id.NewRandom()
+	} else {
+		mc.ID = existingID
 	}
-	_, err = r.put(mc.ID, mc)
-	return err
+	if _, err = r.put(mc.ID, mc); err != nil {
+		return err
+	}
+	if !isNew {
+		return nil
+	}
+	// A newly created card always lands in its owner's default deck; an upsert into an existing
+	// card must not, or a card moved out of the default folder would jump back on every save.
+	return NewMusicCardFolderRepository(r.ctx, r.db).AddCardToDefault(mc.ID)
 }
 
 func (r *musicCardRepository) Delete(id string) error {

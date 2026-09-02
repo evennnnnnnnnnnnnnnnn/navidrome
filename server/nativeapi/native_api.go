@@ -84,6 +84,8 @@ func (api *Router) routes() http.Handler {
 		api.R(r, "/musiccardreview", model.MusicCardReview{}, false)
 		api.addMusicCardClipRoute(r)
 		api.addMusicCardReviewGradeRoute(r)
+		api.addMusicCardFolderRoute(r)
+		api.addMusicCardFolderCardsRoute(r)
 		api.R(r, "/tag", model.Tag{}, false)
 		api.R(r, "/scrobble", model.Scrobble{}, false)
 		if conf.Server.EnableSharing {

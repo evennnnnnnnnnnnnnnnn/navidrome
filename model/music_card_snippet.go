@@ -6,6 +6,9 @@ import "time"
 // timing, the bound reading, and a full-lyrics snapshot, so the card never needs to re-resolve
 // lyrics or bindings from the source song once saved. It has no user_id column of its own -
 // ownership is transitive through CardID, matching the (user, kanji_text) card it belongs to.
+// The Word* fields snapshot the dictionary lookup key of the word containing the snippet's kanji
+// run (surface, dictionary form, kana reading, POS), never its glosses; empty means unknown, and
+// legacy snippets resolve their word lazily at render time.
 type MusicCardSnippet struct {
 	ID          string    `structs:"id"            json:"id"`
 	CardID      string    `structs:"card_id"       json:"card_id"`
@@ -20,6 +23,10 @@ type MusicCardSnippet struct {
 	SongTitle   string    `structs:"song_title"    json:"song_title"`
 	SongArtist  string    `structs:"song_artist"   json:"song_artist"`
 	FullLyrics  string    `structs:"full_lyrics"   json:"full_lyrics"`
+	WordText    string    `structs:"word_text"     json:"word_text"`
+	WordBase    string    `structs:"word_base"     json:"word_base"`
+	WordReading string    `structs:"word_reading"  json:"word_reading"`
+	WordPos     string    `structs:"word_pos"      json:"word_pos"`
 	CreatedAt   time.Time `structs:"created_at"    json:"created_at"`
 	UpdatedAt   time.Time `structs:"updated_at"    json:"updated_at"`
 }

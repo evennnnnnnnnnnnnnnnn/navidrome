@@ -74,6 +74,10 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 			SongTitle:   "A Day In A Life",
 			SongArtist:  "The Beatles",
 			FullLyrics:  "full lyrics text",
+			WordText:    "歌詞",
+			WordBase:    "歌詞",
+			WordReading: "カシ",
+			WordPos:     "名詞",
 		}
 	}
 
@@ -87,6 +91,23 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(got.CardID).To(Equal(regularCard.ID))
 			Expect(got.SnippetText).To(Equal("歌詞の行"))
+			Expect(got.WordText).To(Equal("歌詞"))
+			Expect(got.WordBase).To(Equal("歌詞"))
+			Expect(got.WordReading).To(Equal("カシ"))
+			Expect(got.WordPos).To(Equal("名詞"))
+		})
+
+		It("stores empty word fields when the containing word is unknown", func() {
+			s := snippet(regularCard.ID)
+			s.WordText, s.WordBase, s.WordReading, s.WordPos = "", "", "", ""
+			Expect(regularRepo.Put(s)).To(Succeed())
+
+			got, err := regularRepo.Get(s.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(got.WordText).To(BeEmpty())
+			Expect(got.WordBase).To(BeEmpty())
+			Expect(got.WordReading).To(BeEmpty())
+			Expect(got.WordPos).To(BeEmpty())
 		})
 
 		It("refuses to attach a snippet to another user's card, even when card_id is spoofed", func() {
@@ -191,6 +212,23 @@ var _ = Describe("MusicCardSnippetRepository", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(stored.SnippetText).To(Equal("renamed-by-owner"))
 			Expect(stored.CardID).To(Equal(regularCard.ID))
+		})
+
+		It("lets the owner update the word fields", func() {
+			update := snippet(regularCard.ID)
+			update.ID = victim.ID
+			update.WordText = "行"
+			update.WordBase = "行く"
+			update.WordReading = "イ"
+			update.WordPos = "動詞"
+			Expect(regularRepo.Update(victim.ID, update)).To(Succeed())
+
+			stored, err := regularRepo.Get(victim.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(stored.WordText).To(Equal("行"))
+			Expect(stored.WordBase).To(Equal("行く"))
+			Expect(stored.WordReading).To(Equal("イ"))
+			Expect(stored.WordPos).To(Equal("動詞"))
 		})
 
 		It("lets the owner delete their own snippet", func() {

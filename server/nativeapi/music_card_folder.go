@@ -13,9 +13,9 @@ import (
 	"github.com/navidrome/navidrome/server"
 )
 
-// addMusicCardFolderRoute registers the folder resource. It is the generic api.R registration with
-// one wrapper: rest.Delete only maps ErrNotFound/ErrPermissionDenied, so refusing to delete a
-// user's default folder would come back as a 500 instead of a 400.
+// addMusicCardFolderRoute registers the folder resource: the generic api.R registration with two
+// wrappers, because the generic controller answers "not yours" with 403 and knows nothing about the
+// undeletable default folder.
 func (api *Router) addMusicCardFolderRoute(r chi.Router) {
 	constructor := func(ctx context.Context) rest.Repository {
 		return api.ds.Resource(ctx, model.MusicCardFolder{})
@@ -26,10 +26,35 @@ func (api *Router) addMusicCardFolderRoute(r chi.Router) {
 		r.Route("/{id}", func(r chi.Router) {
 			r.Use(server.URLParamsMiddleware)
 			r.Get("/", rest.Get(constructor))
-			r.Put("/", rest.Put(constructor))
+			r.Put("/", putMusicCardFolder(constructor))
 			r.Delete("/", deleteMusicCardFolder(api.ds))
 		})
 	})
+}
+
+// putMusicCardFolder is rest.Put over a repository that reports a folder the caller does not own as
+// missing, so a private folder's existence never leaks through a 403. Validation errors still come
+// back as 400.
+func putMusicCardFolder(constructor rest.RepositoryConstructor) http.HandlerFunc {
+	return rest.Put(func(ctx context.Context) rest.Repository {
+		repo := constructor(ctx)
+		return &hiddenDeniedFolderRepository{Repository: repo, Persistable: repo.(rest.Persistable)}
+	})
+}
+
+type hiddenDeniedFolderRepository struct {
+	rest.Repository
+	rest.Persistable
+}
+
+func (r *hiddenDeniedFolderRepository) Update(id string, entity any, cols ...string) error {
+	if err := r.Persistable.Update(id, entity, cols...); err != nil {
+		if errors.Is(err, rest.ErrPermissionDenied) {
+			return rest.ErrNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func deleteMusicCardFolder(ds model.DataStore) http.HandlerFunc {

@@ -94,6 +94,30 @@ var _ = Describe("MusicCardFolderRepository", func() {
 			Expect(errors.As(err, &verr)).To(BeTrue())
 		})
 
+		It("refuses a duplicate name with a unique validation error, on create and on rename", func() {
+			Expect(regularRepo.Put(folder("JLPT N3"))).To(Succeed())
+			other := folder("JLPT N4")
+			Expect(regularRepo.Put(other)).To(Succeed())
+
+			var verr *rest.ValidationError
+			err := regularRepo.Put(folder("JLPT N3"))
+			Expect(errors.As(err, &verr)).To(BeTrue())
+			Expect(verr.Errors).To(HaveKeyWithValue("name", "ra.validation.unique"))
+
+			err = regularRepo.Update(other.ID, &model.MusicCardFolder{Name: "JLPT N3"}, "name")
+			Expect(errors.As(err, &verr)).To(BeTrue())
+			Expect(verr.Errors).To(HaveKeyWithValue("name", "ra.validation.unique"))
+
+			Expect(thirdRepo.Put(folder("JLPT N3"))).To(Succeed(), "the name is unique per user, not per server")
+		})
+
+		It("materialises the default deck first, so its reserved name cannot be squatted", func() {
+			var verr *rest.ValidationError
+			err := regularRepo.Put(folder(defaultMusicCardFolderName))
+			Expect(errors.As(err, &verr)).To(BeTrue())
+			Expect(countDefaultFoldersOf(database, regularUser.ID)).To(Equal(1))
+		})
+
 		It("upserts through Save exactly like Put", func() {
 			f := folder("Saved")
 			id, err := regularRepo.Save(f)
@@ -277,6 +301,33 @@ var _ = Describe("MusicCardFolderRepository", func() {
 			Expect(mine.ID).ToNot(Equal(theirs.ID))
 		})
 
+		It("returns the winner's folder when the default was created between the lookup and the insert", func() {
+			winner, err := regularRepo.EnsureDefault()
+			Expect(err).ToNot(HaveOccurred())
+
+			// insertDefault is the branch a caller reaches once its own lookup missed; the partial
+			// unique index makes its insert fail exactly as it does in the race.
+			got, err := regularRepo.insertDefault(regularUser.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(got.ID).To(Equal(winner.ID))
+			Expect(countDefaultFoldersOf(database, regularUser.ID)).To(Equal(1))
+		})
+
+		It("rolls the new card back when its default-deck membership cannot be written", func() {
+			// A folder already holding the reserved name makes lazy default creation fail.
+			_, err := database.NewQuery(`insert into music_card_folder (id, user_id, name, public, review_enabled, is_default)
+				values ('squatter', {:u}, 'Default', false, true, false)`).
+				Bind(dbx.Params{"u": regularUser.ID}).Execute()
+			Expect(err).ToNot(HaveOccurred())
+
+			cardRepo := cardRepoAs(regularUser)
+			Expect(cardRepo.Put(&model.MusicCard{KanjiText: "巻戻"})).ToNot(Succeed())
+
+			cards, err := cardRepo.GetAll()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(cards).To(BeEmpty(), "a card stored without its membership would never get one")
+		})
+
 		It("places a newly created card in its owner's default folder, and leaves an upsert alone", func() {
 			cardRepo := cardRepoAs(regularUser)
 			c := newCard(cardRepo, "漢字")
@@ -316,6 +367,19 @@ var _ = Describe("MusicCardFolderRepository", func() {
 			got, err := regularRepo.Get(deck.ID)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(got.CardIDs).To(ConsistOf(mine.ID))
+		})
+
+		It("adds cards in the caller's transaction, so a rollback leaves no membership behind", func() {
+			err := database.Transactional(func(tx *dbx.Tx) error {
+				repo := NewMusicCardFolderRepository(regularRepo.ctx, tx)
+				Expect(repo.AddCards(deck.ID, []string{mine.ID})).To(Succeed())
+				return errors.New("rolled back")
+			})
+			Expect(err).To(MatchError("rolled back"))
+
+			got, err := regularRepo.Get(deck.ID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(got.CardIDs).To(BeEmpty())
 		})
 
 		It("refuses the whole call when any card belongs to another user", func() {

@@ -137,5 +137,46 @@ var _ = Describe("Music Card Folder Cards Endpoints", func() {
 			Expect(w.Code).To(Equal(http.StatusBadRequest))
 			Expect(w.Body.String()).To(ContainSubstring("the default folder cannot be deleted"))
 		})
+
+		It("returns 404 for a GET on an unknown id and on an existing invisible one alike", func() {
+			repo.Data["private"] = &model.MusicCardFolder{ID: "private", UserID: "u2", Name: "Someone else's"}
+			repo.Hidden["private"] = true
+
+			Expect(doRequest("GET", "/musiccardfolder/unknown", "").Code).To(Equal(http.StatusNotFound))
+			Expect(doRequest("GET", "/musiccardfolder/private", "").Code).To(Equal(http.StatusNotFound),
+				"an invisible folder must be indistinguishable from a missing one")
+		})
+
+		It("returns 404, not 403, for a PUT the caller may not perform", func() {
+			repo.Denied["f1"] = true
+			w := doRequest("PUT", "/musiccardfolder/f1", `{"name":"hijacked"}`)
+			Expect(w.Code).To(Equal(http.StatusNotFound), "permission denied must not leak the folder's existence")
+			Expect(repo.Data["f1"].Name).To(Equal("Shared deck"))
+
+			Expect(doRequest("PUT", "/musiccardfolder/unknown", `{"name":"x"}`).Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("ignores is_default on create and on update", func() {
+			w := doRequest("POST", "/musiccardfolder", `{"name":"Sneaky","is_default":true}`)
+			Expect(w.Code).To(Equal(http.StatusOK))
+			var created map[string]string
+			Expect(json.Unmarshal(w.Body.Bytes(), &created)).To(Succeed())
+			Expect(repo.Data[created["id"]].IsDefault).To(BeFalse())
+
+			w = doRequest("PUT", "/musiccardfolder/f1", `{"name":"Shared deck","is_default":true}`)
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(repo.Data["f1"].IsDefault).To(BeFalse())
+		})
+
+		It("returns 400 with a unique validation body on a duplicate name", func() {
+			w := doRequest("POST", "/musiccardfolder", `{"name":"Shared deck"}`)
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+			Expect(w.Body.String()).To(ContainSubstring("ra.validation.unique"))
+
+			repo.Data["f2"] = &model.MusicCardFolder{ID: "f2", UserID: "u1", Name: "Other deck"}
+			w = doRequest("PUT", "/musiccardfolder/f2", `{"name":"Shared deck"}`)
+			Expect(w.Code).To(Equal(http.StatusBadRequest))
+			Expect(w.Body.String()).To(ContainSubstring("ra.validation.unique"))
+		})
 	})
 })

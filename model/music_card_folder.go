@@ -2,10 +2,8 @@ package model
 
 import "time"
 
-// MusicCardFolder is a user-owned deck of MusicCards, shaped like a Playlist: membership is a join
-// table so a card can sit in several folders, and a public folder is readable by every other user
-// on the server while staying writable only by its owner. Every user has exactly one is_default
-// folder - the deck new cards land in - which cannot be deleted.
+// MusicCardFolder is a user-owned deck of MusicCards. Membership is a join table, so a card can sit
+// in several folders.
 type MusicCardFolder struct {
 	ID            string    `structs:"id"             json:"id"`
 	UserID        string    `structs:"user_id"        json:"user_id"`
@@ -22,9 +20,8 @@ type MusicCardFolder struct {
 
 type MusicCardFolders []MusicCardFolder
 
-// MusicCardWithSnippets is a card served with its snippets in one response, so a viewer reading
-// someone else's public folder can render and replay every card without a second round trip (and
-// without any cross-user read on the card/snippet repositories themselves).
+// MusicCardWithSnippets lets a viewer render and replay a public folder without a second round trip
+// or any cross-user read on the card/snippet repositories.
 type MusicCardWithSnippets struct {
 	MusicCard
 	Snippets MusicCardSnippets `json:"snippets"`
@@ -32,9 +29,8 @@ type MusicCardWithSnippets struct {
 
 type MusicCardsWithSnippets []MusicCardWithSnippets
 
-// MusicCardFolderRepository reads under "owned by me or public" and writes owner-only: no admin
-// bypass on either side, and user_id/is_default are always server-owned, never taken from a
-// request payload.
+// MusicCardFolderRepository reads "owned by me or public" and writes owner-only, with no admin
+// bypass on either side.
 type MusicCardFolderRepository interface {
 	ResourceRepository
 	CountAll(options ...QueryOptions) (int64, error)

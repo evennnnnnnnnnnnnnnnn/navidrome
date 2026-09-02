@@ -38,6 +38,13 @@ var _ = Describe("upCreateMusicCardFolderTables", func() {
 		Expect(tx.Commit()).To(Succeed())
 	}
 
+	runDown := func() {
+		tx, err := db.BeginTx(ctx, nil)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(downCreateMusicCardFolderTables(ctx, tx)).To(Succeed())
+		Expect(tx.Commit()).To(Succeed())
+	}
+
 	BeforeEach(func() {
 		var err error
 		db, err = sql.Open("sqlite3", "file::memory:")
@@ -90,13 +97,18 @@ var _ = Describe("upCreateMusicCardFolderTables", func() {
 
 	It("drops both tables on down", func() {
 		runUp()
-
-		tx, err := db.BeginTx(ctx, nil)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(downCreateMusicCardFolderTables(ctx, tx)).To(Succeed())
-		Expect(tx.Commit()).To(Succeed())
+		runDown()
 
 		Expect(scalar(`select count(*) from sqlite_master
 			where type = 'table' and name in ('music_card_folder', 'music_card_folder_card')`)).To(BeZero())
+	})
+
+	It("backfills exactly once when the migration is re-applied after a down", func() {
+		runUp()
+		runDown()
+		runUp()
+
+		Expect(scalar(`select count(*) from music_card_folder`)).To(Equal(3))
+		Expect(scalar(`select count(*) from music_card_folder_card`)).To(Equal(3))
 	})
 })

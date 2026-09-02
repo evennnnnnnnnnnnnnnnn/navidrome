@@ -14,8 +14,11 @@ type MockMusicCardFolderRepo struct {
 	Data map[string]*model.MusicCardFolder
 	// CardsData is what Cards returns per folder id; a folder missing from it yields ErrNotFound.
 	CardsData map[string]model.MusicCardsWithSnippets
-	// Denied folder ids are refused with rest.ErrPermissionDenied on membership writes.
+	// Denied folder ids are refused with rest.ErrPermissionDenied on writes, as the real repository
+	// does for a folder the caller does not own.
 	Denied map[string]bool
+	// Hidden folder ids are reported as missing on reads, as the visibility filter does.
+	Hidden map[string]bool
 	Added  map[string][]string
 	Err    bool
 }
@@ -25,6 +28,7 @@ func CreateMockMusicCardFolderRepo() *MockMusicCardFolderRepo {
 		Data:      map[string]*model.MusicCardFolder{},
 		CardsData: map[string]model.MusicCardsWithSnippets{},
 		Denied:    map[string]bool{},
+		Hidden:    map[string]bool{},
 		Added:     map[string][]string{},
 	}
 }
@@ -48,7 +52,7 @@ func (m *MockMusicCardFolderRepo) Get(id string) (*model.MusicCardFolder, error)
 	if m.Err {
 		return nil, errors.New("error")
 	}
-	if d, ok := m.Data[id]; ok {
+	if d, ok := m.Data[id]; ok && !m.Hidden[id] {
 		return d, nil
 	}
 	return nil, model.ErrNotFound
@@ -71,6 +75,10 @@ func (m *MockMusicCardFolderRepo) Put(f *model.MusicCardFolder) error {
 	}
 	if f.ID == "" {
 		f.ID = id.NewRandom()
+	}
+	f.IsDefault = false // is_default is server-owned, never taken from a payload
+	if err := m.checkNameFree(f.ID, f.Name); err != nil {
+		return err
 	}
 	m.Data[f.ID] = f
 	return nil
@@ -160,7 +168,11 @@ func (m *MockMusicCardFolderRepo) NewInstance() any {
 }
 
 func (m *MockMusicCardFolderRepo) Read(id string) (any, error) {
-	return m.Get(id)
+	f, err := m.Get(id)
+	if errors.Is(err, model.ErrNotFound) {
+		return nil, rest.ErrNotFound
+	}
+	return f, err
 }
 
 func (m *MockMusicCardFolderRepo) ReadAll(options ...rest.QueryOptions) (any, error) {
@@ -176,12 +188,32 @@ func (m *MockMusicCardFolderRepo) Save(entity any) (string, error) {
 }
 
 func (m *MockMusicCardFolderRepo) Update(id string, entity any, cols ...string) error {
-	if _, found := m.Data[id]; !found {
+	current, found := m.Data[id]
+	if !found {
 		return rest.ErrNotFound
 	}
+	if m.Denied[id] {
+		return rest.ErrPermissionDenied
+	}
 	f := entity.(*model.MusicCardFolder)
+	if err := m.checkNameFree(id, f.Name); err != nil {
+		return err
+	}
 	f.ID = id
+	f.UserID = current.UserID // ownership is immutable
+	f.IsDefault = current.IsDefault
 	m.Data[id] = f
+	return nil
+}
+
+// checkNameFree mirrors the (user_id, name) unique constraint the real repository maps to a
+// validation error.
+func (m *MockMusicCardFolderRepo) checkNameFree(id, name string) error {
+	for otherID, other := range m.Data {
+		if otherID != id && other.Name == name {
+			return &rest.ValidationError{Errors: map[string]string{"name": "ra.validation.unique"}}
+		}
+	}
 	return nil
 }
 

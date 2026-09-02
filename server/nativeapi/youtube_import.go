@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -61,6 +62,9 @@ func (api *Router) handleYoutubeImport(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.As(err, &downloadErr):
 		http.Error(w, downloadErr.Error(), http.StatusUnprocessableEntity)
+		return
+	case errors.Is(err, fs.ErrExist):
+		http.Error(w, "import already exists", http.StatusConflict)
 		return
 	case err != nil:
 		log.Error(ctx, "YouTube import failed", "url", payload.URL, err)

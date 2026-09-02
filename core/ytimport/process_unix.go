@@ -3,6 +3,8 @@
 package ytimport
 
 import (
+	"errors"
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -10,6 +12,10 @@ import (
 func configureCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
 	}
 }

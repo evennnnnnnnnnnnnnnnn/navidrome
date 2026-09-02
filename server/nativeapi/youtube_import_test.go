@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -98,6 +99,13 @@ var _ = Describe("YouTube Import Endpoint", func() {
 		w := doRequest(adminUser, `{"url":"https://youtube.com/watch?v=x"}`)
 		Expect(w.Code).To(Equal(http.StatusUnprocessableEntity))
 		Expect(w.Body.String()).To(ContainSubstring("video unavailable"))
+	})
+
+	It("maps an existing import to 409", func() {
+		fake.err = &fs.PathError{Op: "open", Path: "Song.mp3", Err: fs.ErrExist}
+		w := doRequest(adminUser, `{"url":"https://youtube.com/watch?v=x"}`)
+		Expect(w.Code).To(Equal(http.StatusConflict))
+		Expect(w.Body.String()).To(Equal("import already exists\n"))
 	})
 
 	It("defaults the library to the default library id", func() {

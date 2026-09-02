@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,6 +19,12 @@ import (
 )
 
 var _ = Describe("yt-dlp cancellation", func() {
+	It("treats a missing process group as already done", func() {
+		cmd := &exec.Cmd{Process: &os.Process{Pid: 1 << 30}}
+		configureCommand(cmd)
+		Expect(cmd.Cancel()).To(MatchError(os.ErrProcessDone))
+	})
+
 	It("kills child processes", func() {
 		dir := GinkgoT().TempDir()
 		pidPath := filepath.Join(dir, "child.pid")

@@ -110,7 +110,6 @@ jobs:
                   STATUS=$?
                   set -e
                   echo "$OUT"
-                  echo "$OUT" | grep -E "JS runtimes|Challenge Providers" || true
                   if [ "$STATUS" -ne 0 ]; then
                     echo "::error::yt-dlp smoke test exited with status $STATUS."
                     exit 1

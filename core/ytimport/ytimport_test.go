@@ -3,6 +3,7 @@ package ytimport
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -100,6 +101,21 @@ var _ = Describe("Importer", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(firstPath).To(BeAnExistingFile())
 		Expect(secondPath).To(BeAnExistingFile())
+	})
+
+	It("does not overwrite an existing import", func() {
+		mp3Path := stubDownload("Song Title [same].mp3")
+		Expect(os.MkdirAll(filepath.Dir(mp3Path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(mp3Path, []byte("existing"), 0o644)).To(Succeed())
+		srv := newLrclibServer(http.StatusOK, `{"syncedLyrics":"[00:01.00] Hello"}`)
+		defer srv.Close()
+
+		_, err := imp.Import(ctx, "https://www.youtube.com/watch?v=same", 1)
+		Expect(errors.Is(err, fs.ErrExist)).To(BeTrue())
+		content, readErr := os.ReadFile(mp3Path)
+		Expect(readErr).ToNot(HaveOccurred())
+		Expect(string(content)).To(Equal("existing"))
+		Expect(filepath.Join(filepath.Dir(mp3Path), "Song Title [same].lrc")).ToNot(BeAnExistingFile())
 	})
 
 	It("parses the yt-dlp print output and rounds the duration", func() {

@@ -17,7 +17,7 @@ import (
 // repository is read-only through the generic REST layer (no rest.Persistable); the only write
 // path is Put, called by the grade endpoint after applying the scheduler transition.
 type musicCardReviewRepository struct {
-	sqlRepository
+	cardOwnedRepository
 }
 
 // dueBeforeFilter lets the REST list endpoint restrict to cards due at or before a moment
@@ -45,25 +45,6 @@ func NewMusicCardReviewRepository(ctx context.Context, db dbx.Builder) model.Mus
 		"due_before": dueBeforeFilter,
 	})
 	return r
-}
-
-// ownerFilter returns the predicate restricting access to review rows whose parent card is owned
-// by the logged-in user. It returns nil only for headless/system contexts (invalid user), meaning
-// "no ownership restriction" - the same contract as musicCardSnippetRepository.ownerFilter, admins
-// included.
-func (r *musicCardReviewRepository) ownerFilter() Sqlizer {
-	if usr := loggedUser(r.ctx); usr.ID != invalidUserId {
-		return Expr("card_id in (select id from music_card where user_id = ?)", usr.ID)
-	}
-	return nil
-}
-
-func (r *musicCardReviewRepository) newRestSelect(options ...model.QueryOptions) SelectBuilder {
-	sel := r.newSelect(options...)
-	if owner := r.ownerFilter(); owner != nil {
-		sel = sel.Where(owner)
-	}
-	return sel
 }
 
 func (r *musicCardReviewRepository) CountAll(options ...model.QueryOptions) (int64, error) {
@@ -99,34 +80,6 @@ func (r *musicCardReviewRepository) GetByCardID(cardID string) (*model.MusicCard
 		return nil, err
 	}
 	return &res, nil
-}
-
-// cardOwnerID returns the user_id of the card identified by cardID, or model.ErrNotFound if it
-// does not exist.
-func (r *musicCardReviewRepository) cardOwnerID(cardID string) (string, error) {
-	sel := Select("user_id").From("music_card").Where(Eq{"id": cardID})
-	var res struct{ UserID string }
-	err := r.queryOne(sel, &res)
-	if err != nil {
-		return "", err
-	}
-	return res.UserID, nil
-}
-
-// checkCardOwnership verifies the caller may hold review state on cardID: headless contexts pass
-// unconditionally (once the card is confirmed to exist), every logged-in caller - admins included -
-// must own the card. Returns model.ErrNotFound if the card doesn't exist,
-// rest.ErrPermissionDenied if it exists but belongs to someone else.
-func (r *musicCardReviewRepository) checkCardOwnership(cardID string) error {
-	ownerID, err := r.cardOwnerID(cardID)
-	if err != nil {
-		return err
-	}
-	usr := loggedUser(r.ctx)
-	if usr.ID != invalidUserId && ownerID != usr.ID {
-		return rest.ErrPermissionDenied
-	}
-	return nil
 }
 
 // Put upserts the review row at its card_id natural key, verifying the caller owns that card first

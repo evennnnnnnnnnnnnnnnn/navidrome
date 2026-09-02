@@ -54,6 +54,45 @@ type sqlRepository struct {
 	sortMappings map[string]string
 }
 
+type cardOwnedRepository struct {
+	sqlRepository
+}
+
+func (r *cardOwnedRepository) ownerFilter() Sqlizer {
+	if usr := loggedUser(r.ctx); usr.ID != invalidUserId {
+		return Expr("card_id in (select id from music_card where user_id = ?)", usr.ID)
+	}
+	return nil
+}
+
+func (r *cardOwnedRepository) newRestSelect(options ...model.QueryOptions) SelectBuilder {
+	sel := r.newSelect(options...)
+	if owner := r.ownerFilter(); owner != nil {
+		sel = sel.Where(owner)
+	}
+	return sel
+}
+
+func (r *cardOwnedRepository) cardOwnerID(cardID string) (string, error) {
+	sel := Select("user_id").From("music_card").Where(Eq{"id": cardID})
+	var res struct{ UserID string }
+	if err := r.queryOne(sel, &res); err != nil {
+		return "", err
+	}
+	return res.UserID, nil
+}
+
+func (r *cardOwnedRepository) checkCardOwnership(cardID string) error {
+	ownerID, err := r.cardOwnerID(cardID)
+	if err != nil {
+		return err
+	}
+	if usr := loggedUser(r.ctx); usr.ID != invalidUserId && ownerID != usr.ID {
+		return rest.ErrPermissionDenied
+	}
+	return nil
+}
+
 const invalidUserId = "-1"
 
 func loggedUser(ctx context.Context) *model.User {

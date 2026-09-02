@@ -141,9 +141,8 @@ func daysToDuration(days float64) time.Duration {
 
 // MusicCardReviewRepository is a resource repository whose ownership is scoped transitively
 // through the parent MusicCard's user_id, exactly like MusicCardSnippetRepository: every method
-// must verify the caller owns (or is admin of) CardID's card. The generic REST exposure is
-// read-only - all writes go through the grade endpoint so the transition function is the only
-// path that mutates schedule state.
+// must verify the caller owns CardID's card. The generic REST exposure is read-only - all writes go
+// through the grade endpoint so the transition function is the only path that mutates schedule state.
 type MusicCardReviewRepository interface {
 	ResourceRepository
 	CountAll(options ...QueryOptions) (int64, error)

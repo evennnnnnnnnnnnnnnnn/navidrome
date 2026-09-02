@@ -185,6 +185,17 @@ var _ = Describe("MusicCardFolderRepository", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(count).To(Equal(int64(len(all))))
 		})
+
+		It("filters REST reads by qualified id and name columns", func() {
+			res, err := regularRepo.ReadAll(rest.QueryOptions{Filters: map[string]any{
+				"id": private.ID, "name": "Private",
+			}})
+			Expect(err).ToNot(HaveOccurred())
+			folders := res.(model.MusicCardFolders)
+			Expect(folders).To(HaveLen(1))
+			Expect(folders[0].ID).To(Equal(private.ID))
+			Expect(folders[0].Name).To(Equal(private.Name))
+		})
 	})
 
 	Describe("Ownership enforcement", func() {

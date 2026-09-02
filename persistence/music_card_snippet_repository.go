@@ -18,7 +18,7 @@ import (
 // against music_card instead of using the generic addRestriction/updateOwned/deleteOwned helpers,
 // which assume an unqualified user_id column on the repository's own table.
 type musicCardSnippetRepository struct {
-	sqlRepository
+	cardOwnedRepository
 }
 
 func NewMusicCardSnippetRepository(ctx context.Context, db dbx.Builder) model.MusicCardSnippetRepository {
@@ -27,26 +27,6 @@ func NewMusicCardSnippetRepository(ctx context.Context, db dbx.Builder) model.Mu
 	r.db = db
 	r.registerModel(&model.MusicCardSnippet{}, nil)
 	return r
-}
-
-// ownerFilter returns the predicate restricting access to snippets whose parent card is owned by
-// the logged-in user. It returns nil only for headless/system contexts (invalid user), meaning "no
-// ownership restriction" - mirroring sqlRepository.ownerFilter under strictOwnership, but scoped
-// through card_id instead of an unqualified user_id column. Admins are scoped like everyone else,
-// because a snippet is private card content and not an administrable resource.
-func (r *musicCardSnippetRepository) ownerFilter() Sqlizer {
-	if usr := loggedUser(r.ctx); usr.ID != invalidUserId {
-		return Expr("card_id in (select id from music_card where user_id = ?)", usr.ID)
-	}
-	return nil
-}
-
-func (r *musicCardSnippetRepository) newRestSelect(options ...model.QueryOptions) SelectBuilder {
-	sel := r.newSelect(options...)
-	if owner := r.ownerFilter(); owner != nil {
-		sel = sel.Where(owner)
-	}
-	return sel
 }
 
 func (r *musicCardSnippetRepository) CountAll(options ...model.QueryOptions) (int64, error) {
@@ -74,35 +54,7 @@ func (r *musicCardSnippetRepository) GetAll(options ...model.QueryOptions) (mode
 	return res, err
 }
 
-// cardOwnerID returns the user_id of the card identified by cardID, or model.ErrNotFound if it
-// does not exist.
-func (r *musicCardSnippetRepository) cardOwnerID(cardID string) (string, error) {
-	sel := Select("user_id").From("music_card").Where(Eq{"id": cardID})
-	var res struct{ UserID string }
-	err := r.queryOne(sel, &res)
-	if err != nil {
-		return "", err
-	}
-	return res.UserID, nil
-}
-
-// checkCardOwnership verifies the caller may attach/see snippets on cardID: headless contexts pass
-// unconditionally (once the card is confirmed to exist), every logged-in caller - admins included -
-// must own the card. Returns model.ErrNotFound if the card doesn't exist,
-// rest.ErrPermissionDenied if it exists but belongs to someone else.
-func (r *musicCardSnippetRepository) checkCardOwnership(cardID string) error {
-	ownerID, err := r.cardOwnerID(cardID)
-	if err != nil {
-		return err
-	}
-	usr := loggedUser(r.ctx)
-	if usr.ID != invalidUserId && ownerID != usr.ID {
-		return rest.ErrPermissionDenied
-	}
-	return nil
-}
-
-// Put creates a new snippet on the given card, verifying the caller owns (or is admin of) that
+// Put creates a new snippet on the given card, verifying the caller owns that
 // card - the request payload's card_id is trusted only after this check, so a snippet can never be
 // attached to another user's card by spoofing card_id.
 func (r *musicCardSnippetRepository) Put(s *model.MusicCardSnippet) error {

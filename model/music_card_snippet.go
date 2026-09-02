@@ -34,8 +34,8 @@ type MusicCardSnippet struct {
 type MusicCardSnippets []MusicCardSnippet
 
 // MusicCardSnippetRepository is a resource repository whose ownership is scoped transitively
-// through the parent MusicCard's user_id: every method must verify the caller owns (or is admin
-// of) CardID's card, never trusting a card_id supplied in the request payload to bypass that check.
+// through the parent MusicCard's user_id: every method must verify the caller owns CardID's card,
+// never trusting a card_id supplied in the request payload to bypass that check.
 type MusicCardSnippetRepository interface {
 	ResourceRepository
 	CountAll(options ...QueryOptions) (int64, error)

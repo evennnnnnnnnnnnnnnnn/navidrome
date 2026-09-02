@@ -30,7 +30,14 @@ func NewMusicCardFolderRepository(ctx context.Context, db dbx.Builder) model.Mus
 	r.ctx = ctx
 	r.db = db
 	r.strictOwnership = true
-	r.registerModel(&model.MusicCardFolder{}, nil)
+	r.registerModel(&model.MusicCardFolder{}, map[string]filterFunc{
+		"id":   idFilter("music_card_folder"),
+		"name": startsWithFilter("music_card_folder.name"),
+	})
+	r.setSortMappings(map[string]string{
+		"name":       naturalSort("music_card_folder.name"),
+		"owner_name": naturalSort("owner_name"),
+	})
 	return r
 }
 

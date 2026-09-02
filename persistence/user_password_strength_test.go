@@ -100,13 +100,14 @@ var _ = Describe("UserRepository password strength", func() {
 			expectRejected(err)
 		})
 
-		It("allows creating a user with no password at all", func() {
-			// An empty NewPassword means "leave the password alone", not "set it to
-			// empty", so the strength bar must not fire on it.
+		It("refuses creating a user with no password", func() {
 			u := &model.User{ID: id.NewRandom(), UserName: "nopwd-" + id.NewRandom(), Name: "No Password"}
 			_, err := repo.Save(u)
-			Expect(err).ToNot(HaveOccurred())
-			DeferCleanup(func() { _ = users.Delete(u.ID) })
+			vErr, ok := err.(*rest.ValidationError)
+			Expect(ok).To(BeTrue(), "expected a rest.ValidationError, got %T", err)
+			Expect(vErr.Errors).To(HaveKeyWithValue("password", "ra.validation.required"))
+			_, err = users.FindByUsername(u.UserName)
+			Expect(err).To(MatchError(model.ErrNotFound))
 		})
 	})
 

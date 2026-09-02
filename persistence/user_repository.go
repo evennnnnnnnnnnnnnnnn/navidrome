@@ -274,6 +274,9 @@ func (r *userRepository) Save(entity any) (string, error) {
 		return "", rest.ErrPermissionDenied
 	}
 	u := entity.(*model.User)
+	if u.NewPassword == "" {
+		return "", &rest.ValidationError{Errors: map[string]string{"password": "ra.validation.required"}}
+	}
 	if err := ValidatePasswordStrength(u); err != nil {
 		return "", err
 	}

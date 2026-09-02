@@ -258,6 +258,15 @@ var _ = Describe("Auth", func() {
 				Expect(parsed["id"]).ToNot(BeEmpty())
 				Expect(parsed["token"]).ToNot(BeEmpty())
 			})
+
+			It("rejects an empty password for an account with no stored password", func() {
+				usr := ds.User(context.Background())
+				Expect(usr.Put(&model.User{ID: "111", UserName: "janedoe", Name: "Jane"})).To(Succeed())
+				req = httptest.NewRequest("POST", "/login", strings.NewReader(`{"username":"janedoe", "password":""}`))
+
+				login(ds)(resp, req)
+				Expect(resp.Code).To(Equal(http.StatusUnauthorized))
+			})
 		})
 	})
 

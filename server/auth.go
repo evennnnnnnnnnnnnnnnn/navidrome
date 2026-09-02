@@ -174,6 +174,9 @@ func createAdminUser(ctx context.Context, ds model.DataStore, username, password
 }
 
 func validateLogin(userRepo model.UserRepository, userName, password string) (*model.User, error) {
+	if password == "" {
+		return nil, nil
+	}
 	u, err := userRepo.FindByUsernameWithPassword(userName)
 	if errors.Is(err, model.ErrNotFound) {
 		return nil, nil
